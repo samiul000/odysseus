@@ -811,6 +811,7 @@ export function initEmailLibrary(config) {
 export function isOpen() { return state._libOpen; }
 
 export function openEmailLibrary(opts = {}) {
+  if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('email');
   // Force-clean any stale state from previous attempts
   const existing = document.getElementById('email-lib-modal');
   if (existing) existing.remove();

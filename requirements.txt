@@ -47,3 +47,7 @@ pytest-asyncio
 # TestClient import when only classic httpx is present. Runtime code keeps
 # using `httpx` above; this is test-client only.
 httpx2
+
+# Windows-compitable libraries to fix  termios and pty crash
+pywinpty; sys_platform == 'win32'
+winfcntl; sys_platform == 'win32'

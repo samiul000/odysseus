@@ -799,7 +799,7 @@ def setup_cookbook_routes() -> APIRouter:
                 lines.append(f"rm -f '{wrapper_script}'")
                 lines.append('exec "${SHELL:-/bin/bash}"')
                 wrapper_script.write_text("\n".join(lines) + "\n", encoding="utf-8")
-                wrapper_script.chmod(0o755)
+                safe_chmod(wrapper_script, 0o755)
             setup_cmd = None if IS_WINDOWS else f"tmux set-option -g history-limit 100000 2>/dev/null; tmux new-session -d -s {session_id} {shlex.quote(str(wrapper_script))}"
 
         logger.info(f"Model download: {req.repo_id} (backend={'ollama' if is_ollama_download else 'hf'}, include={req.include}, session={session_id}, remote={remote})")
@@ -3163,7 +3163,8 @@ def setup_cookbook_routes() -> APIRouter:
             """
             if not repo_id or "/" not in repo_id:
                 return False
-            cmd = ["python3", "-c", HF_CACHE_COMPLETE_PROBE, repo_id, cache_root or ""]
+            probe_interp = sys.executable if not remote_host else "python3"
+            cmd = [probe_interp, "-c", HF_CACHE_COMPLETE_PROBE, repo_id, cache_root or ""]
             try:
                 if remote_host:
                     ssh_base = ["ssh"]
@@ -3186,7 +3187,8 @@ def setup_cookbook_routes() -> APIRouter:
             """
             if not repo_id or "/" not in repo_id:
                 return False
-            cmd = ["python3", "-c", HF_CACHE_INCOMPLETE_PROBE, repo_id, cache_root or ""]
+            probe_interp = sys.executable if not remote_host else "python3"
+            cmd = [probe_interp, "-c", HF_CACHE_INCOMPLETE_PROBE, repo_id, cache_root or ""]
             try:
                 if remote_host:
                     ssh_base = ["ssh"]

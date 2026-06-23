@@ -163,7 +163,7 @@ Routes can be grouped into logical feature domains. Current flat structure obscu
 | **Research** | `research_routes.py` | — | LOW |
 | **MCP** | `mcp_routes.py` | — | LOW |
 | **Notes** | `note_routes.py` | — | LOW |
-| **Other** | `prefs_routes.py`, `upload_routes.py`, `vault_routes.py`, `webhook_routes.py`, `workspace_routes.py`, `search_routes.py`, `history_routes.py`, `hwfit_routes.py`, `preset_routes.py`, `signature_routes.py`, `backup_routes.py`, `cleanup_routes.py`, `diagnostics_routes.py`, `embedding_routes.py`, `emoji_routes.py`, `font_routes.py`, `stt_routes.py`, `tts_routes.py`, `compare_routes.py`, `personal_routes.py`, `editor_draft_routes.py`, `admin_wipe_routes.py`, `chatgpt_subscription_routes.py` | 2,000+ | LOW individual, HIGH cumulative |
+| **Other** | `prefs_routes.py`, `upload_routes.py`, `vault_routes.py`, `webhook_routes.py`, `workspace_routes.py`, `search_routes.py`, `history_routes.py`, `hwfit_routes.py`, `preset_routes.py`, `signature_routes.py`, `backup_routes.py`, `cleanup_routes.py`, `diagnostics_routes.py`, `embedding_routes.py`, `emoji_routes.py`, `font_routes.py`, `stt_routes.py`, `tts_routes.py`, `compare_routes.py`, `personal_routes.py`, `admin_wipe_routes.py`, `chatgpt_subscription_routes.py` | 2,000+ | LOW individual, HIGH cumulative |
 
 ---
 
@@ -368,7 +368,7 @@ signature_routes.py         personal_routes.py        hwfit_routes.py
 backup_routes.py            cleanup_routes.py         diagnostics_routes.py
 embedding_routes.py         emoji_routes.py           font_routes.py
 stt_routes.py               tts_routes.py             compare_routes.py
-editor_draft_routes.py      chatgpt_subscription_routes.py    admin_wipe_routes.py
+chatgpt_subscription_routes.py    admin_wipe_routes.py
 ```
 
 ### `core/` (10 files)

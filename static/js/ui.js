@@ -917,11 +917,7 @@ if ('ontouchstart' in window) {
     const content = e.target.closest('.modal-content') || e.target.closest('#theme-popup');
     if (!content) return;
 
-    // The image editor owns all touches inside its container so the user
-    // can paint / move layers / draw selections without the modal trying
-    // to interpret it as a swipe-to-dismiss gesture. Skip the swipe init
-    // entirely when the touch starts inside the editor area.
-    if (e.target.closest('.gallery-editor, .gallery-editor-container')) return;
+
     // Internal vertical drag handles (e.g. the calendar's cal-splitter that
     // resizes the day-detail pane) consume vertical touches themselves. If
     // we don't bail here, the swipe-dismiss path also tracks the touch and
@@ -1265,20 +1261,6 @@ if (!window._odyEscExpandGuard) {
         // No header found — collapse the content directly.
         try { think.classList.remove('expanded'); } catch {}
       }
-      return;
-    }
-    const galleryEditor = document.getElementById('gallery-editor-container');
-    const galleryModal = galleryEditor?.closest('.modal');
-    const galleryEditing = !!(
-      galleryEditor &&
-      galleryModal &&
-      !galleryModal.classList.contains('hidden') &&
-      getComputedStyle(galleryEditor).display !== 'none' &&
-      galleryEditor.querySelector('.gallery-editor')
-    );
-    if (galleryEditing) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
       return;
     }
     const settingsModal = document.getElementById('settings-modal');

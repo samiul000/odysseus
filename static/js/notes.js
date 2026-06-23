@@ -1114,6 +1114,7 @@ export async function refreshDueBadge(opts = {}) {
 // ---- Panel ----
 
 export function openPanel() {
+  if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('notes');
   if (_open) {
     _bringNotesToFront();
     return;
@@ -3980,7 +3981,7 @@ function _wireCanvas(container, initialImageUrl) {
 
   const colorInput = container.querySelector('.note-form-draw-color');
   // Swap the native browser color dialog for the in-house HSV picker
-  // (same one used by Themes + the gallery editor). Existing `input` event
+  // (same one used by Themes). Existing `input` event
   // listeners + .value reads keep working — see colorPicker.js.
   if (colorInput) attachColorPicker(colorInput);
   const sizeInput = container.querySelector('.note-form-draw-size');

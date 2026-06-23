@@ -2,7 +2,7 @@
 //
 // Adds a "drag-to-right" gesture that docks a modal as a right-side panel
 // (mirrors the snap-to-top fullscreen pattern used by _makeDraggable in
-// emailLibrary.js / documentLibrary.js / galleryEditor.js). While docked:
+// emailLibrary.js / documentLibrary.js). While docked:
 //   - the modal-content lives at `right: 0; top: 0; bottom: 0` with a
 //     viewport-fraction width
 //   - body gets `right-dock-active` + `--right-dock-w` so the workspace

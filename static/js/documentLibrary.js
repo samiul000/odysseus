@@ -1568,6 +1568,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
   }
 
   export function openLibrary(opts) {
+    if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('editor');
     if (_libraryOpen) {
       // Recover from stuck state: the swipe-to-dismiss in ui.js adds .hidden
       // to the modal without calling closeLibrary, so _libraryOpen can stay

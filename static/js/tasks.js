@@ -2511,6 +2511,7 @@ function _renderMainView() {
 // ---- Modal ----
 
 export function openTasks(focusId, opts) {
+  if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('tasks');
   const o = opts || {};
   const openActivityForFailure = _taskFailurePending && !focusId && o.filter === undefined;
   _setTaskFailurePending(false);

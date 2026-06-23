@@ -16,6 +16,7 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
@@ -98,18 +99,19 @@ def _tool_path_roots() -> list[str]:
     from src.constants import DATA_DIR
     roots.append(DATA_DIR)
 
-    # /tmp (and its macOS realpath /private/tmp).
-    roots.append("/tmp")
+    # System temp directory — platform-independent.
+    tmp_root = tempfile.gettempdir()
+    roots.append(tmp_root)
     try:
-        private_tmp = os.path.realpath("/tmp")
-        if private_tmp != "/tmp":
-            roots.append(private_tmp)
+        real_tmp = os.path.realpath(tmp_root)
+        if real_tmp != tmp_root:
+            roots.append(real_tmp)
     except OSError:
         pass
 
     # $TMPDIR — per-user temp root on macOS (e.g. /var/folders/.../T/).
     tmpdir = os.environ.get("TMPDIR")
-    if tmpdir:
+    if tmpdir and tmpdir != tmp_root:
         roots.append(tmpdir)
 
     # Opt-in extra roots from settings.

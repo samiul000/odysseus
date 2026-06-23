@@ -678,10 +678,6 @@ app.include_router(setup_signature_routes())
 from routes.gallery_routes import setup_gallery_routes
 app.include_router(setup_gallery_routes())
 
-# Persisted image-editor drafts (server-backed projects)
-from routes.editor_draft_routes import setup_editor_draft_routes
-app.include_router(setup_editor_draft_routes())
-
 # Scheduled tasks + event bus
 from src.task_scheduler import TaskScheduler
 task_scheduler = TaskScheduler(session_manager)

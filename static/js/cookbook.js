@@ -526,9 +526,9 @@ function _buildEnvPrefixWindows() {
 }
 
 function _venvRootFromPath(path) {
-  let p = (path || '').toString().trim().replace(/\/+$/, '');
+  let p = (path || '').toString().trim().replace(/[\/\\]+$/, '');
   if (!p) return '';
-  p = p.replace(/\/bin\/(?:activate|python(?:3(?:\.\d+)?)?|vllm|pip(?:3)?)$/i, '');
+  p = p.replace(/(?:\/bin|\/Scripts)\/(?:activate|python(?:3(?:\.\d+)?)?|vllm|pip(?:3)?)$/i, '');
   return p;
 }
 
@@ -540,7 +540,8 @@ export function _buildServeCmd(f, modelName, backend) {
   // venv activated. Absolute path sidesteps the whole PATH question.
   const _formVenv = (f.venv ?? '').toString().trim();
   const _activeVenvPath = _venvRootFromPath(_formVenv || (_envState.env === 'venv' ? (_envState.envPath || '') : ''));
-  const _venvBin = _activeVenvPath ? (_activeVenvPath + '/bin/') : '';
+  const _winVenv = _envState.platform === 'windows';
+  const _venvBin = _activeVenvPath ? (_activeVenvPath + (_winVenv ? '\\Scripts\\' : '/bin/')) : '';
   const _vllmBin = _venvBin ? `${_venvBin}vllm` : 'vllm';
   const _py3Bin = _venvBin ? `${_venvBin}python3` : 'python3';
   let cmd = '';
@@ -1036,9 +1037,11 @@ async function _fetchDependencies() {
     // the activate line — `docker pull` doesn't need a venv.
     function _recipeDisplayText(commands, variant) {
       if (variant === 'docker') return commands.join('\n');
-      const envPath = (_envState.envPath || '').replace(/\/+$/, '');
+      const envPath = (_envState.envPath || '').replace(/[\/\\]+$/, '');
+      const isWin = _envState.platform === 'windows';
+      const suffix = isWin ? '\\Scripts\\activate' : '/bin/activate';
       const activate = envPath
-        ? `source ${envPath}${envPath.endsWith('/bin/activate') ? '' : '/bin/activate'}`
+        ? `source ${envPath}${envPath.endsWith(suffix) ? '' : suffix}`
         : '# (activate your venv first)';
       return [activate, ...commands].join('\n');
     }
@@ -1431,11 +1434,16 @@ async function _fetchDependencies() {
         const targetHost = _envState.remoteHost || 'local';
         // Build env_prefix from the configured envPath (matches _installDep).
         let envPrefix = '';
+        const _isWin = _envState.platform === 'windows';
         if (_envState.env === 'venv' && _envState.envPath) {
           const p = _envState.envPath;
-          envPrefix = 'source ' + _shellQuote(p.endsWith('/bin/activate') ? p : p + '/bin/activate');
+          if (_isWin) {
+            envPrefix = '& ' + _psQuote(p.endsWith('\\Scripts\\Activate.ps1') ? p : p + '\\Scripts\\Activate.ps1');
+          } else {
+            envPrefix = 'source ' + _shellQuote(p.endsWith('/bin/activate') ? p : p + '/bin/activate');
+          }
         } else if (_envState.env === 'conda' && _envState.envPath) {
-          envPrefix = 'eval "$(conda shell.bash hook)" && conda activate ' + _shellQuote(_envState.envPath);
+          envPrefix = _isWin ? 'conda activate ' + _psQuote(_envState.envPath) : 'eval "$(conda shell.bash hook)" && conda activate ' + _shellQuote(_envState.envPath);
         }
         const reqBody = {
           repo_id: `${backend} setup`,
@@ -2905,6 +2913,7 @@ if (typeof window !== 'undefined' && !window._cookbookServeEscBound) {
 }
 
 export async function open(opts) {
+  if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('cookbook');
   const modal = document.getElementById('cookbook-modal');
   if (!modal) return;
   // Run any post-open intent (switch tab, prefill search, etc) after the

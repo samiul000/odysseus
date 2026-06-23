@@ -557,19 +557,6 @@ function initializeEventListeners() {
       const dynamicModals = ['library-modal', 'archive-modal', 'doclib-modal', 'gallery-modal', 'tasks-modal', 'email-lib-modal'];
       for (const id of dynamicModals) {
         const m = document.getElementById(id);
-        if (id === 'gallery-modal') {
-          const editor = document.getElementById('gallery-editor-container');
-          const editing = !!window.__galleryEditLive || !!(
-            editor &&
-            getComputedStyle(editor).display !== 'none' &&
-            editor.querySelector('.gallery-editor')
-          );
-          if (editing) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            return;
-          }
-        }
         if (m) { dismissModal(m); return; }
       }
 
@@ -605,15 +592,6 @@ function initializeEventListeners() {
   const _dynamicModalIds = ['library-modal', 'archive-modal', 'doclib-modal', 'gallery-modal', 'tasks-modal'];
   function dismissModal(modal) {
     if (!modal || modal.classList.contains('hidden')) return;
-    if (modal.id === 'gallery-modal') {
-      const editor = document.getElementById('gallery-editor-container');
-      const editing = !!window.__galleryEditLive || !!(
-        editor &&
-        getComputedStyle(editor).display !== 'none' &&
-        editor.querySelector('.gallery-editor')
-      );
-      if (editing) return;
-    }
     const content = modal.querySelector('.modal-content') || modal.querySelector('#theme-popup');
     if (content && !content.classList.contains('modal-closing')) {
       content.classList.remove('sheet-ready');
@@ -1497,6 +1475,7 @@ function initializeEventListeners() {
   const toolMemoryBtn = el('tool-memory-btn');
   if (toolMemoryBtn && memoryModal) {
     toolMemoryBtn.addEventListener('click', () => {
+      if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('memory');
       memoryModal.classList.remove('hidden');
       if (memoryModule && memoryModule.renderMemoryList) memoryModule.renderMemoryList();
       if (memoryModule && memoryModule.updateMemoryCount) memoryModule.updateMemoryCount();

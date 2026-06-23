@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> ·
+  <a href="#quick-start-docker">Quick Start</a> ·
   <a href="docs/setup.md">Setup Guide</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="ROADMAP.md">Roadmap</a>
@@ -23,7 +23,7 @@
 
 ---
 
-## Quick Start
+## Quick Start (Docker)
 
 > `dev` is the default branch and gets the newest changes first. Use [`main`](https://github.com/pewdiepie-archdaemon/odysseus/tree/main) if you want the more curated branch.
 
@@ -36,7 +36,55 @@ docker compose up -d --build
 
 Open `http://localhost:7000` when the containers are healthy. The first admin password is printed in `docker compose logs odysseus`.
 
-Native installs, GPU notes, Windows/macOS instructions, HTTPS, and configuration live in the [setup guide](docs/setup.md).
+GPU notes, macOS instructions, HTTPS, and configuration live in the [setup guide](docs/setup.md).
+
+---
+
+## Run Without Docker
+
+### Linux / macOS (native)
+
+```bash
+git clone https://github.com/pewdiepie-archdaemon/odysseus.git
+cd odysseus
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python setup.py
+python -m uvicorn app:app --host 127.0.0.1 --port 7000
+```
+
+Requirements: Python 3.11+. Cookbook also needs `tmux` for background model
+downloads and serves (`apt install tmux` / `brew install tmux`).
+
+### Windows (native)
+
+```powershell
+git clone https://github.com/pewdiepie-archdaemon/odysseus.git
+cd odysseus
+.\launch-windows.ps1
+```
+
+Or, after adding the project folder to your `PATH`, run from anywhere:
+
+```powershell
+.\odysseus
+```
+
+> **Tip:** pass custom flags to either command, e.g.
+> `odysseus -Port 8080 -BindHost 0.0.0.0`. The first run handles venv
+> creation, dependency install, and first-time setup automatically.
+
+The script creates a virtualenv, installs dependencies, runs first-time setup,
+and starts the server. Open `http://127.0.0.1:7000` when it finishes.
+
+Requirements: Python 3.11+ ([python.org](https://www.python.org/downloads/)).
+For full Cookbook background model downloads and the agent shell tool, install
+[Git for Windows](https://git-scm.com/download/win) (provides `bash.exe`).
+
+> **Local model serving** on Windows is limited to Ollama and llama.cpp (vLLM is
+> not supported on Windows). See [WINDOWS.md](WINDOWS.md) for known caveats and
+> applied compatibility fixes.
 
 ## Features
 
@@ -47,7 +95,7 @@ Native installs, GPU notes, Windows/macOS instructions, HTTPS, and configuration
 - **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and syntax highlighting.
 - **Email** — IMAP/SMTP inbox with triage, tags, summaries, reminders, and reply drafts.
 - **Notes, Tasks + Calendar** — reminders, todos, scheduled agent tasks, and CalDAV sync.
-- **Extras** — gallery/image editor, themes, uploads, web search, presets, sessions, and 2FA.
+- **Extras** — themes, uploads, web search, presets, sessions, and 2FA.
 
 ## Demo
 
@@ -60,16 +108,6 @@ Help is welcome. The best entry points are fresh-install testing, provider setup
 ## Security
 
 Odysseus is a self-hosted workspace with powerful local tools. Keep auth enabled, keep private data out of Git, and do not expose raw model/service ports publicly. Deployment details are in the [setup guide](docs/setup.md#security-notes).
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=pewdiepie-archdaemon%2Fodysseus&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=pewdiepie-archdaemon/odysseus&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=pewdiepie-archdaemon/odysseus&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=pewdiepie-archdaemon/odysseus&type=date&legend=top-left" />
- </picture>
-</a>
 
 ## License
 

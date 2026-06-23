@@ -3935,6 +3935,7 @@ import * as Modals from './modalManager.js';
   // ---- Panel open/close ----
 
   export function openPanel() {
+    if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('editor');
     if (isOpen) return;
     // Clear any pane/divider still sliding out from a just-fired close so we
     // don't end up with two #doc-editor-pane nodes (and a stale close stripping

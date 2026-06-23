@@ -1,0 +1,4337 @@
+﻿/* â”€â”€ Mobile compose FAB (email) â”€â”€
+   Replaces the top-right "New" button on phones with a round mail-icon button
+   bottom-right that collapses to a circle while the list scrolls and springs
+   back out to "New" when scrolling stops. Desktop is unchanged. */
+.email-lib-fab { display: none; }
+@media (max-width: 768px) {
+  /* The absolute FAB anchors to the email panel card. */
+  #email-lib-modal .admin-card { position: relative; }
+  /* Hide the toolbar "New" button â€” the FAB is the mobile entry point. */
+  #email-lib-compose-btn { display: none; }
+
+  #email-lib-modal .email-lib-fab {
+    --fab-size: 56px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    /* Hidden until the email list has rendered; JS adds .fab-revealed to pop
+       it in (scale-from-center). Avoids the button flashing at the top and
+       sliding down before _positionFab() places it. */
+    transform: scale(0);
+    opacity: 0;
+    transform-origin: center center;
+    position: absolute;
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    height: var(--fab-size);
+    min-width: var(--fab-size);
+    padding: 0 20px 0 18px;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-primary, var(--red));
+    color: #fff;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,.38), 0 2px 6px rgba(0,0,0,.28);
+    z-index: 30;
+    pointer-events: auto;
+    /* This (base) transition governs the EXPAND â€” slower + graceful. */
+    transition:
+      padding 420ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 240ms ease,
+      transform 140ms ease,
+      background 140ms ease;
+    will-change: padding, transform;
+  }
+  #email-lib-modal .email-lib-fab svg { flex: 0 0 auto; display: block; }
+  #email-lib-modal .email-lib-fab .email-lib-fab-label {
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 120px;
+    opacity: 1;
+    /* EXPAND timing â€” label eases out a touch after the width opens up. */
+    transition:
+      max-width 420ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 300ms 60ms cubic-bezier(0.22, 1, 0.36, 1),
+      margin 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* Collapsed (while scrolling) â†’ pure circle, icon only. We DON'T set an
+     explicit width: the container is auto-width and shrinks smoothly as the
+     padding + label max-width animate (min-width keeps it circular). Setting a
+     fixed width here made the collapse snap, since autoâ†”px width can't tween.
+     This (.collapsed) transition governs the COLLAPSE â€” kept snappy. */
+  #email-lib-modal .email-lib-fab.collapsed {
+    padding: 0;
+    justify-content: center;
+    transition:
+      padding 230ms cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 200ms ease,
+      transform 140ms ease;
+  }
+  #email-lib-modal .email-lib-fab.collapsed .email-lib-fab-label {
+    max-width: 0;
+    opacity: 0;
+    margin-left: -9px;
+    transition:
+      max-width 230ms cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      margin 230ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  /* Entrance: circle-expand-from-middle pop, played once when revealed. No
+     `forwards` fill so the resting transform (scale 1) comes from this rule â€”
+     that keeps the :active press transform working afterwards. */
+  #email-lib-modal .email-lib-fab.fab-revealed {
+    transform: scale(1);
+    opacity: 1;
+    animation: emailFabPop 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #email-lib-modal .email-lib-fab:active {
+    transform: scale(0.93);
+    filter: brightness(0.92);
+    box-shadow: 0 3px 10px rgba(0,0,0,.4);
+  }
+}
+@keyframes emailFabPop {
+  from { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.06); opacity: 1; }
+  to   { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #email-lib-modal .email-lib-fab,
+  #email-lib-modal .email-lib-fab .email-lib-fab-label { transition-duration: 1ms; }
+  #email-lib-modal .email-lib-fab.fab-revealed { animation: none; }
+}
+/* When the modal-content has explicit height (fullscreen or user-resized),
+   drop the floor so the grid sizes purely from flex. */
+#email-lib-modal.email-lib-fullscreen .doclib-grid,
+#email-lib-modal .modal-content[style*="height"] .doclib-grid {
+  min-height: 0;
+}
+/* Document library: same fix as the email library (#74). When fullscreened
+   the modal-content gets an inline `height: 100vh`, but the inner
+   .doclib-grid stays capped at the 400px default so the list looks like a
+   tiny strip floating in a giant empty modal. Mirror the email recipe:
+   make the modal a flex column, give the body/admin-card claim of the
+   remaining height, and let the grid take the rest. Scoped to the
+   fullscreen class so windowed-mode layout is unchanged. */
+/* Inner flex chain that lets the chats/documents grid claim the full
+   remaining height of the modal. Applies in BOTH fullscreen AND
+   right-docked states â€” without the docked state included, dragging a
+   fullscreen doclib to the right snap zone breaks the flex layout
+   because exitFullscreen removes .doclib-fullscreen, and the grid
+   falls back to its base max-height: 400px showing only ~8 items.
+   The CSS variable :is() selector lets both states share one rule. */
+#doclib-modal.doclib-fullscreen .doclib-modal-content,
+#doclib-modal.modal-right-docked .doclib-modal-content,
+#doclib-modal.modal-left-docked .doclib-modal-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Fullscreen positioning â€” scoped to NOT apply when also right-docked.
+   Without this exclusion, dragging a fullscreen doclib to the right snap
+   zone keeps .doclib-fullscreen on the modal and these !important rules
+   override the dock's inline styles, leaving the modal stuck fullscreen
+   instead of becoming a side panel. */
+#doclib-modal.doclib-fullscreen:not(.modal-right-docked) .doclib-modal-content {
+  position: fixed !important;
+  top: 0 !important;
+  left: calc(var(--icon-rail-w, 48px) + var(--sidebar-w, 0px)) !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  transform: none !important;
+}
+#doclib-modal.doclib-fullscreen .modal-header,
+#doclib-modal.doclib-fullscreen .lib-tabs,
+#doclib-modal.modal-right-docked .modal-header,
+#doclib-modal.modal-right-docked .lib-tabs,
+#doclib-modal.modal-left-docked .modal-header,
+#doclib-modal.modal-left-docked .lib-tabs {
+  flex: 0 0 auto;
+}
+#doclib-modal.doclib-fullscreen .modal-body,
+#doclib-modal.modal-right-docked .modal-body,
+#doclib-modal.modal-left-docked .modal-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#doclib-modal.doclib-fullscreen .admin-card,
+#doclib-modal.modal-right-docked .admin-card,
+#doclib-modal.modal-left-docked .admin-card {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+#doclib-modal.doclib-fullscreen .doclib-grid:not(:has(.doclib-card-expanded)),
+#doclib-modal.modal-right-docked .doclib-grid:not(:has(.doclib-card-expanded)),
+#doclib-modal.modal-left-docked .doclib-grid:not(:has(.doclib-card-expanded)) {
+  max-height: none;
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* "Reply" docks the open email modal to the left as a sidebar so the doc
+   panel (which slides in from the right of the chat area) is visible
+   side-by-side. The .modal backdrop is already pointer-events:none for
+   email modals â€” only the content takes pointer events â€” so the chat /
+   doc panel underneath stays interactive. */
+.modal.email-snap-left {
+  align-items: stretch;
+  justify-content: flex-start;
+  left: 0 !important;
+  width: 100% !important;
+}
+.modal.email-snap-left .modal-content {
+  left: var(--email-doc-split-left-x, 0px) !important;
+  width: var(--email-doc-split-email-w, 420px) !important;
+  max-width: var(--email-doc-split-email-w, 420px) !important;
+  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.18);
+  border-radius: 0;
+}
+@media (min-width: 769px) {
+  body.email-doc-split-active.doc-view #email-lib-modal,
+  body.email-doc-split-active.doc-view.email-front #email-lib-modal,
+  body.email-doc-split-active.doc-view .modal[id^="email-reader-"],
+  body.email-doc-split-active.doc-view.email-front .modal[id^="email-reader-"] {
+    z-index: 150 !important;
+  }
+  body.email-doc-split-active #email-lib-modal.email-snap-left,
+  body.email-doc-split-active #email-lib-modal.modal-left-docked {
+    left: var(--email-doc-split-left-x, 0px) !important;
+    width: var(--email-doc-split-email-w, 420px) !important;
+    overflow: hidden !important;
+    z-index: 155 !important;
+  }
+  body.email-doc-split-active #email-lib-modal.email-snap-left:not(.modal-dragging) .modal-content,
+  body.email-doc-split-active #email-lib-modal.modal-left-docked:not(.modal-dragging) .modal-content,
+  body.email-doc-split-active .modal[id^="email-reader-"].email-snap-left:not(.modal-dragging) .modal-content,
+  body.email-doc-split-active .modal[id^="email-reader-"].modal-left-docked:not(.modal-dragging) .modal-content {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: auto !important;
+    width: var(--email-doc-split-email-w, 420px) !important;
+    max-width: var(--email-doc-split-email-w, 420px) !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    transform: none !important;
+    margin: 0 !important;
+  }
+  body.email-doc-split-active.doc-view .doc-divider {
+    display: none !important;
+  }
+  body.email-doc-split-active.doc-view .doc-editor-pane {
+    position: fixed !important;
+    left: var(--email-doc-split-right-x, 420px) !important;
+    right: var(--right-dock-w, 0px) !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    height: 100vh !important;
+    z-index: 260 !important;
+    margin-top: 0 !important;
+    transform: none !important;
+    border-left: none !important;
+  }
+}
+
+/* Email reader "Search text in this thread" / from-sender toggle â€”
+   DISABLED on all viewports while the search/threaded-sidebar UX is too
+   buggy to ship. Re-enable by removing this rule + the JS .remove()
+   guards in emailLibrary.js. */
+body [data-act="from-sender"] {
+  display: none !important;
+}
+
+/* Edge docking. Docked panels are fixed to the viewport edge; the workspace
+   panes reserve room with margins so left + right docks can be active at the
+   same time without skewing the entire body box. */
+body.right-dock-active {
+  padding-right: 0;
+}
+body.left-dock-active {
+  padding-left: 0;
+}
+body.left-dock-active:not(.email-doc-split-active) .chat-container {
+  margin-left: var(--left-dock-w, 0px);
+}
+body.right-dock-active .chat-container,
+body.right-dock-active:not(.email-doc-split-active) .doc-editor-pane {
+  margin-right: var(--right-dock-w, 0px);
+}
+.modal.modal-right-docked {
+  align-items: stretch;
+  justify-content: flex-end;
+}
+.modal.modal-right-docked .modal-content {
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 14px rgba(0, 0, 0, 0.18);
+  border-radius: 0;
+}
+.modal.modal-left-docked {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.modal.modal-left-docked .modal-content {
+  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.18);
+  border-radius: 0;
+  /* Pin transitions OFF on the dock's positioning properties. The wide
+     sidebar collapse/expand changes --sidebar-w instantly, which means
+     the docked modal's `left: calc(...)` jumps by ~240px. Any CSS
+     transition on `left` (inherited or otherwise) would animate that
+     jump as a fly-across. Same defense for right-docked / fullscreen
+     panels in case future themes add a generic transition. */
+  transition: none !important;
+}
+.modal.modal-right-docked .modal-content,
+#email-lib-modal.email-lib-fullscreen .modal-content,
+#doclib-modal.doclib-fullscreen .doclib-modal-content {
+  transition: none !important;
+}
+.modal.modal-right-docked .email-reader-header,
+.modal.modal-left-docked .email-reader-header {
+  flex-direction: column;
+  /* Stretch the meta to the full header width so the absolute
+     action cluster's right:0 lands at the right edge (was sizing
+     meta to chip content width and centering it). */
+  align-items: stretch;
+  gap: 6px;
+}
+/* Docked panes: 4px between Fromâ†’To and 4px between Toâ†’Cc.
+   Meta has its own 2px gap (Fromâ†’details) so an extra 2px on
+   details margin-top gives a 4px Fromâ†’To distance, and gap:4 on
+   the details flex column gives 4px between To and Cc. */
+.modal.modal-right-docked .email-reader-meta-details,
+.modal.modal-left-docked .email-reader-meta-details {
+  margin-top: 2px;
+  gap: 4px;
+}
+/* Docked: always show To/Cc â€” there's vertical room reserved for
+   the action cluster already and the chevron toggle just adds
+   friction. Force the hidden attribute open and hide the chevron. */
+.modal.modal-right-docked .email-reader-meta-details[hidden],
+.modal.modal-left-docked .email-reader-meta-details[hidden] {
+  display: flex !important;
+}
+.modal.modal-right-docked .email-reader-meta-toggle,
+.modal.modal-left-docked .email-reader-meta-toggle {
+  display: none;
+}
+.modal.modal-right-docked .email-reader-header > .email-reader-actions,
+.modal.modal-left-docked .email-reader-header > .email-reader-actions {
+  position: static;
+  align-self: flex-end;
+  background: none;
+  padding-left: 0;
+}
+/* Docked modal: keep all meta rows as flex so From / To / Cc
+   labels align at the same x. Chips already overflow-scroll
+   inside each row when there are too many. No per-row margin-top
+   here â€” the spacing between rows comes entirely from
+   .email-reader-meta-details gap so Fromâ†’To and Toâ†’Cc match. */
+.modal.modal-right-docked .email-reader-meta-row:not(.email-reader-meta-from),
+.modal.modal-left-docked .email-reader-meta-row:not(.email-reader-meta-from) {
+  padding-right: 0;
+}
+.modal.modal-right-docked .email-reader-meta-row strong,
+.modal.modal-left-docked .email-reader-meta-row strong {
+  min-width: 0;
+}
+.modal.modal-right-docked .recipient-chip,
+.modal.modal-left-docked .recipient-chip {
+  max-width: 100%;
+}
+.archive-list {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+#archive-modal .memory-sort-select,
+#archive-modal .memory-toolbar-btn {
+  height: 32px;
+}
+.archive-menu-btn {
+  position: relative;
+  top: 2px;
+}
+#archive-chips .doclib-chip {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  padding: 0 8px;
+}
+/* Library tab panels â€” Chats / Archive / Research / Documents share the
+   same toolbar dimensions so the sort dropdown + Select button line up
+   identically across tabs. */
+#doclib-panel-chats .memory-sort-select,
+#doclib-panel-archive .memory-sort-select,
+#doclib-panel-research .memory-sort-select,
+[data-doclib-panel="documents"] .memory-sort-select {
+  height: 24px;
+  font-size: 11px;
+  width: 86px;
+}
+#doclib-panel-chats .memory-toolbar-btn,
+#doclib-panel-archive .memory-toolbar-btn,
+#doclib-panel-research .memory-toolbar-btn,
+[data-doclib-panel="documents"] .memory-toolbar-btn {
+  height: 24px;
+  font-size: 11px;
+  position: relative;
+  top: -3px;
+}
+/* Research's Recent (sort) + Select sat 1px lower than the other tabs â€” nudge up. */
+#doclib-panel-research .memory-sort-select { position: relative; top: 1.5px; }
+#doclib-panel-research .memory-toolbar-btn { top: -4.5px; }
+#doclib-research-search { position: relative; top: -1.5px; }
+[data-doclib-panel] { padding-top: 6px !important; }
+#doclib-panel-chats, #doclib-panel-archive { padding-top: 14px !important; }
+#doclib-panel-chats .memory-desc, #doclib-panel-archive .memory-desc, #doclib-panel-research .memory-desc { margin-top: 7px; }
+#doclib-panel-chats .memory-search-input,
+#doclib-panel-archive .memory-search-input {
+  height: 30px !important;
+  min-height: 30px !important;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+/* Unified search bar across Library tabs + Memory modal â€” same height,
+   same magnifying-glass icon at the start, consistent padding. */
+#doclib-panel-chats .memory-search-input,
+#doclib-panel-archive .memory-search-input,
+#doclib-panel-research .memory-search-input,
+[data-doclib-panel="documents"] .memory-search-input,
+#memory-modal .memory-search-input,
+#tasks-modal .memory-search-input {
+  height: 30px;
+  min-height: 30px;
+  font-size: 11px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23e06c75' stroke-opacity='0.85' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+  background-repeat: no-repeat;
+  background-position: 9px center;
+  padding-left: 28px;
+}
+#doclib-panel-chats .doclib-chip {
+  height: 28px;
+}
+#doclib-panel-archive .doclib-chip {
+  height: 28px;
+}
+#doclib-panel-chats .doclib-chip,
+#doclib-panel-archive .doclib-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  padding: 0 8px;
+  border-radius: 10px;
+}
+.doclib-grid:has(.doclib-card-expanded) > .doclib-card:not(.doclib-card-expanded) {
+  display: none;
+}
+/* Hide everything except the grid when a card is expanded */
+.admin-card:has(.doclib-card-expanded) > *:not(.doclib-grid):not(.hwfit-cached-list) {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0 !important;
+  padding: 0 !important;
+  transition: opacity 0.12s ease, max-height 0.2s ease;
+}
+.admin-card:has(.doclib-card-expanded) > .memory-bulk-bar {
+  display: none;
+}
+.admin-card:has(.doclib-card-expanded) > .doclib-grid,
+.admin-card:has(.doclib-card-expanded) > .hwfit-cached-list {
+  max-height: none !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+/* Firefox-mobile (no :has()) fallback: when reading an email, fully remove the
+   list-mode chrome (accounts row, toolbar, bulk bar, desc) â€” display:none so no
+   residual flex-gap leaves an empty strip above the reader â€” and zero the
+   admin-card gap so the grid/reader starts flush at the top. */
+#email-lib-modal.email-reading .admin-card > *:not(.doclib-grid):not(.hwfit-cached-list) {
+  display: none !important;
+}
+#email-lib-modal.email-reading .admin-card { gap: 0 !important; }
+/* Override for chat-rows + research-rows: those expand inline with a
+   bounded preview (max-height: 60vh), so the grid must stay clipped
+   and scrollable. Without this scoping the overflow:visible above lets
+   the expanded chat preview escape the grid and overlap whatever's
+   underneath/beside the modal (e.g., a docked sibling panel) â€” what
+   the user calls "merging with other windows". */
+.admin-card:has(.doclib-chat-row.doclib-card-expanded) > .doclib-grid {
+  overflow: hidden auto !important;
+}
+/* Email modal needs the grid to STAY a constrained flex container when
+   expanded â€” overflow:visible (set above for cookbook) lets content escape
+   instead of letting the expanded reader fill via flex:1. We keep the same
+   max-height:none + min-height:0 but flip overflow back so the reader
+   actually fills the modal. */
+#email-lib-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid,
+#email-lib-modal.email-reading .admin-card > .doclib-grid {
+  overflow: hidden !important;
+  display: flex !important;
+  flex: 1 1 auto !important;
+}
+#email-lib-modal.email-reading .doclib-modal-content {
+  min-height: var(--email-reading-modal-min-h, auto);
+}
+#email-lib-modal .doclib-card.doclib-card-expanded {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  /* Neutral frame on the active email â€” the accent border + glow felt
+     overbearing on desktop; the size jump alone is enough signal. */
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12) !important;
+  animation: none !important;
+}
+/* Desktop-only, ONLY on the currently-expanded email card. Nudges the title
+   row down 6px / right 2px, bolds the subject, hides the timestamp from the
+   meta line (the reader header carries its own date), and pulls the prev/next
+   nav arrows in 4px. */
+@media (min-width: 769px) {
+  #email-lib-modal .doclib-card-expanded .email-card-titlerow,
+  #email-lib-modal .doclib-card-expanded .email-card-titlerow > * {
+    position: relative;
+    top: 6px;
+    left: 2px;
+  }
+  /* Smaller subject â€” the reader header below already carries weight. */
+  #email-lib-modal .doclib-card-expanded .email-card-titlerow .memory-item-title {
+    font-weight: 700;
+    font-size: 12px;
+  }
+  /* A bit more breathing room around the title row so the smaller bold text
+     doesn't crowd the meta line below. (Timestamp kept â€” user changed mind.) */
+  #email-lib-modal .doclib-card-expanded .email-card-titlerow {
+    padding: 4px 0 6px;
+    line-height: 1.35;
+  }
+  /* Nudge the date down/left in the meta row, and give the meta line +4px of
+     extra bottom space so the shifted date isn't clipped. */
+  #email-lib-modal .doclib-card-expanded .email-meta-date {
+    position: relative;
+    top: 4px;
+    left: 0;
+  }
+  #email-lib-modal .doclib-card-expanded .memory-item-meta {
+    padding-bottom: 4px;
+  }
+  #email-lib-modal .doclib-card-expanded .email-card-nav-arrows {
+    position: relative;
+    left: -4px;
+  }
+}
+/* Skills modal: same mechanism as email above. The default expanded-grid
+   rule (overflow:visible, no flex) lets the card expand inline to ~content
+   height instead of filling â€” which is why the skill preview stopped at
+   partial height. Flip the grid back to a constrained flex container and
+   let the expanded card fill it, exactly like the email reader. */
+#memory-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid {
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+}
+#memory-modal .doclib-card.doclib-card-expanded {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+}
+/* When the from-sender sidebar is open inside the email card, the email
+   body would otherwise lose 280px to padding-right and read as a narrow
+   strip. Widen the whole modal so the body keeps its normal text width
+   and the sidebar appears alongside, not on top of it. Also force the
+   modal to its full max-height â€” short emails would otherwise leave the
+   sidebar squeezed into a tiny vertical strip. */
+#email-lib-modal .modal-content:has(.from-sender-panel) {
+  width: min(1020px, 95vw) !important;
+  height: 85vh !important;
+  transition: width 0.22s ease-out, height 0.22s ease-out;
+}
+#email-lib-modal .modal-content {
+  transition: width 0.22s ease-out, height 0.22s ease-out;
+}
+@media (min-width: 769px) {
+  body:not(.email-doc-split-active) #email-lib-modal:not(.email-lib-fullscreen):not(.modal-left-docked):not(.modal-right-docked) .modal-content {
+    min-height: min(560px, 85vh);
+  }
+}
+
+/* Cookbook's cached-model list: NO inner-scroll cap. Two nested scroll
+   surfaces (this + the outer .admin-card) trapped the wheel so an expanded
+   serve panel couldn't be reached on tall content. Let the outer
+   .admin-card (overflow-y:auto) be the single scroll surface. */
+.hwfit-cached-list {
+  max-height: none !important;
+  overflow-y: visible !important;
+}
+/* Serve panel specifically: the admin-card inline style is
+   `overflow:hidden` (so the toolbar/header don't drift), and the list
+   inside has overflow:visible. On short windows that combination
+   clipped the cards off the bottom with no scrollbar. Make the list
+   itself the scroll surface so the rest of the card stays put. */
+.cookbook-group[data-backend-group="Serve"] > .admin-card {
+  min-height: 0;
+}
+.cookbook-group[data-backend-group="Serve"] > .admin-card > #hwfit-cached-list,
+.cookbook-group[data-backend-group="Serve"] > .admin-card > .hwfit-cached-list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+.cookbook-group[data-backend-group="Serve"] > .admin-card > .hwfit-cached-list .doclib-card.doclib-card-expanded {
+  flex: 0 0 auto !important;
+  overflow: visible !important;
+}
+/* Drag-and-drop visual hint for the email compose pane. Subtle accent
+   outline + tinted overlay so it's obvious files will attach if dropped. */
+.doc-editor-pane.email-dragover {
+  outline: 2px dashed var(--accent, #2563eb);
+  outline-offset: -8px;
+  background: color-mix(in srgb, var(--accent, #2563eb) 6%, transparent);
+}
+.doc-editor-pane.email-dragover::after {
+  content: 'Drop to attach';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--accent, #2563eb);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* Email reader window â€” make the body always fill the available vertical
+   space regardless of how the window is positioned/resized. The user can
+   drag the bottom-right corner to resize; the body re-flexes automatically. */
+.email-window-modal .modal-content {
+  display: flex !important;
+  flex-direction: column !important;
+  resize: both;
+  overflow: hidden;
+  min-width: 320px;
+  min-height: 240px;
+  /* When user resizes/drags so the window covers a side, force the inner
+     body to fill all the way to the bottom. The default max-height: 85vh
+     (set inline by _makeDraggable's exitFullscreen) and 80vh from the
+     opener both cap at the *viewport* â€” if the browser window then changes
+     size (e.g. OS aero-snap), the modal stays at the old height and
+     truncates rows. Drop the cap whenever an explicit width OR height has
+     been written inline by the resize handle / drag handler. */
+}
+.email-window-modal .modal-content[style*="width"],
+.email-window-modal .modal-content[style*="height"] {
+  max-height: calc(100vh - 16px) !important;
+}
+.email-window-modal .email-window-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  /* Explicit basis of 0 makes the body grow to fill remaining space rather
+     than its content's intrinsic height (which was capping the thread). */
+  flex-basis: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+}
+
+/* Individual email reader window â€” fullscreen mode (drag-to-top snap or
+   double-click header). Same recipe as the library modal: pin to viewport
+   edges and let the inner body absorb the remaining height. */
+body:not(.email-doc-split-active) .email-window-modal.email-window-fullscreen .modal-content {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  transform: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+body:not(.email-doc-split-active) .email-window-modal.email-window-fullscreen .email-window-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* Email library modal: fullscreen mode + larger mobile sheet (mirrors the
+   cookbook treatment so the toolbar and bulk actions stay reachable).
+   Leaves whichever navigation strip is currently visible on the left
+   (the wide sidebar OR the icon rail â€” they're mutually exclusive, so
+   one of the two CSS vars is 0 at any given time, set by init.js). */
+body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.modal-right-docked) .modal-content {
+  position: fixed !important;
+  top: 0 !important;
+  left: calc(var(--icon-rail-w, 48px) + var(--sidebar-w, 0px)) !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  transform: none !important;
+}
+/* Mobile: the /email route adds .email-lib-fullscreen, but the desktop full-
+   bleed rule above squares off the corners and offsets the email by the icon
+   rail. On phones the email should be the normal bottom-sheet â€” full width,
+   rounded top corners. Same specificity as the rule above + later in source,
+   so it wins on mobile. */
+@media (max-width: 768px) {
+  body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.modal-right-docked) .modal-content {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 14px 14px 0 0 !important;
+    border-top: 1px solid var(--border) !important;
+  }
+}
+/* Make the inner panes actually grow to fill the fullscreen container
+   instead of staying at their natural size. The body owns the remaining
+   height below the header; the admin-card + grid then expand into it. */
+#email-lib-modal.email-lib-fullscreen .modal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+#email-lib-modal.email-lib-fullscreen .modal-body > .admin-card {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+#email-lib-modal.email-lib-fullscreen .doclib-grid {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+@media (max-width: 768px) {
+  /* Mobile email modal sizing â€” keep in sync with the rule earlier in the
+     file. 75dvh tall always so flex children (the expanded email reader)
+     have a real height to grow into. */
+  #email-lib-modal .modal-content {
+    max-height: 90dvh !important;
+    max-height: 90vh !important;
+    height: 90dvh !important;
+    height: 90vh !important;
+  }
+  /* Inner panes grow to fill the modal-content â€” without flex:1 on the
+     body, the expanded email reader sits in a tiny box because there's
+     nothing pushing it to take the remaining height. overflow:hidden +
+     min-height:0 lets each layer pass its constraints down. */
+  #email-lib-modal .modal-body,
+  #email-lib-modal .admin-card {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    max-height: none !important;
+  }
+  #email-lib-modal .doclib-grid {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+  /* modal-content keeps its scroll OFF here â€” the inner flex children
+     (doclib-grid for the list view, email-reader-body for the expanded
+     reader) own the scroll surfaces. Without this, double-scroll layouts
+     trap touches and the reader can't claim full height. */
+  #email-lib-modal .modal-content {
+    overflow: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  /* Attachment row on phones: cap to ~2 rows so it never dominates the
+     reader. If more chips exist, the row scrolls vertically. Smaller chip
+     padding + max-width keeps each chip compact so two rows usually fit
+     everything anyway. */
+  #email-lib-modal .email-reader-atts {
+    padding: 4px 10px !important;
+    gap: 3px !important;
+    max-height: calc(2 * 22px + 12px); /* 2 rows Ã— chip height + padding */
+    overflow-y: auto;
+    align-content: flex-start;
+  }
+  #email-lib-modal .email-attachment-chip {
+    padding: 1px 6px !important;
+    font-size: 10px !important;
+    max-width: 130px !important;
+    line-height: 18px !important;
+  }
+}
+
+/* Mobile: only ONE scroll surface inside the cookbook modal. The
+   modal-content is the scroller. Everything inside (cookbook-body,
+   cookbook-group, all the inner lists/panels) gets overflow: visible
+   so touch-pan never gets trapped in a nested scroller.
+   Without this, three levels of overflow:auto + max-height combinations
+   produce dead-zone areas where swipes do nothing. */
+@media (max-width: 768px) {
+  #cookbook-modal .modal-content {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  #cookbook-modal .cookbook-body,
+  #cookbook-modal .cookbook-group,
+  #cookbook-modal .cookbook-section-body,
+  #cookbook-modal .hwfit-cached-list,
+  #cookbook-modal .doclib-grid,
+  #cookbook-modal .hwfit-list,
+  #cookbook-modal .hwfit-panel-cmd {
+    overflow: visible !important;
+    max-height: none !important;
+    min-height: 0 !important;
+  }
+  /* Running tmux output: cap how tall an expanded card gets (a long-lived job
+     can leave thousands of lines) so it doesn't balloon, but keep its own
+     scroll so you can read it. Outputs default collapsed on mobile now, so
+     you're usually looking at one expanded card at a time â€” no wall of nested
+     scrollers, and you collapse it to move past. */
+  #cookbook-modal .cookbook-output-pre,
+  #cookbook-modal .cookbook-task .cookbook-output-pre {
+    max-height: 45vh !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: auto;  /* chain to the modal at the scroll boundary */
+  }
+  /* cookbook-body's flex:1 was needed when it owned scrolling â€” drop it
+     so the inner content drives modal-content's scroll height. */
+  #cookbook-modal .cookbook-body {
+    flex: 0 0 auto !important;
+    height: auto !important;
+  }
+  /* Launch tab's cached-list normally has `flex: 1 1 0; min-height: 0`
+     (so it fills the modal on desktop). On mobile the parent now has
+     `height: auto`, which collapses `flex: 1 1 0` to ZERO PX â€”
+     models render but the list area is invisible because the flex
+     basis is 0 and there's no free space to grow into. Switch to
+     content-sized flex so the list grows with its children. */
+  #cookbook-modal .cookbook-group[data-backend-group="Serve"] > .admin-card > .hwfit-cached-list,
+  #cookbook-modal .cookbook-group[data-backend-group="Serve"] > .admin-card > #hwfit-cached-list {
+    flex: 0 0 auto !important;
+    overflow: visible !important;
+  }
+}
+#cookbook-modal .hwfit-cached-list {
+  flex-shrink: 0;
+}
+.memory-toolbar {
+  transition: opacity 0.12s ease, max-height 0.2s ease;
+  max-height: 120px;
+}
+/* The Servers list reuses .memory-toolbar for layout but must grow with every
+   added server â€” the 120px cap above was clipping manually-added servers. */
+.memory-toolbar.cookbook-servers-toolbar {
+  max-height: none;
+  overflow: visible;
+}
+.doclib-card {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s, opacity 0.3s, max-height 0.3s ease;
+  position: relative;
+}
+.doclib-card.doclib-card-deleting {
+  opacity: 0;
+  max-height: 0 !important;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border-color: transparent;
+}
+.doclib-card:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 16%, transparent);
+}
+.doclib-card.selected,
+/* Universal selection highlight: any card-shaped row (documents, chats,
+   archive, research, skills, memories, tasks) gets the same accent outline
+   when its checkbox is checked. Done via :has() so the highlight follows
+   selection without per-renderer JS changes. The canonical checkbox class
+   is .memory-select-cb across every list. */
+.memory-item:has(.memory-select-cb:checked),
+.doclib-card:has(.memory-select-cb:checked),
+.doclib-chat-row:has(.memory-select-cb:checked) {
+  border-color: color-mix(in srgb, var(--red) 40%, transparent);
+  background: color-mix(in srgb, var(--red) 4%, transparent);
+  /* 2px accent outline overlaid on the 1px border â€” reads as a thicker
+     selected border without shifting layout (every card would otherwise
+     need a 2px transparent border to keep the same width). */
+  outline: 2px solid var(--accent-primary, var(--red));
+  outline-offset: -1px;
+}
+.doclib-card-header {
+  display: flex;
+  align-items: center;
+  padding: 7px 8px;
+  gap: 6px;
+  min-width: 0;
+}
+/* Mobile only: push the unexpanded email card's title-row text down 4px so
+   it sits visually centered with the surrounding card padding. Targets the
+   actual title-row class (.email-card-titlerow) â€” the earlier attempt used
+   .doclib-card-header which the email card builds differently. */
+@media (max-width: 768px) {
+  #email-lib-modal .doclib-card:not(.doclib-card-expanded) .email-card-titlerow {
+    margin-top: 4px;
+  }
+}
+.doclib-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+.doclib-card-ver {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent, var(--red)) 15%, transparent);
+  color: var(--accent, var(--red));
+  font-size: 9px;
+  flex-shrink: 0;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  min-width: 24px;
+  text-align: left;
+  box-sizing: border-box;
+}
+.doclib-card-ver-muted {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: color-mix(in srgb, var(--fg) 35%, transparent);
+}
+.doclib-card-lang {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 9px;
+  text-align: left;
+  flex-shrink: 0;
+  min-width: 52px;
+  box-sizing: border-box;
+}
+.doclib-card-session {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 60px;
+  width: 100px;
+  max-width: 100px;
+  font-size: 9px;
+  color: var(--fg-muted);
+  flex-shrink: 0;
+  text-align: left;
+}
+.doclib-card-time {
+  flex-shrink: 0;
+  opacity: 0.5;
+  font-size: 9px;
+  color: var(--fg-muted);
+  min-width: 50px;
+  text-align: left;
+}
+/* Footer â€” used by archive cards */
+.doclib-card-footer {
+  display: contents;
+}
+/* Preview â€” hidden by default, shown on expand */
+.doclib-card-preview {
+  display: none;
+  position: relative;
+  padding: 8px 12px;
+  font-family: 'Berkeley Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--code-fg, var(--hl-fg, var(--fg)));
+  border-top: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
+  margin: 0;
+}
+.doclib-card-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.doclib-card-expanded .doclib-card-preview pre {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.doclib-card-preview code.hljs {
+  background: none;
+  padding: 0;
+}
+/* Expanded-only action bar â€” inside preview. Buttons shifted up 4px by
+   trimming the row's top margin so they sit closer to the preview text. */
+.doclib-card-expanded-actions {
+  display: none;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
+  margin-top: 4px;
+}
+.doclib-card-expanded-actions > .doclib-card-action-btn,
+.doclib-card-expanded-actions .doclib-action-btn-row > .doclib-card-action-btn {
+  position: relative;
+  top: -4px;
+}
+.doclib-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.doclib-action-btn-row {
+  display: flex;
+  gap: 6px;
+}
+.doclib-action-hint-row {
+  display: flex;
+  gap: 6px;
+}
+/* Match the chat/research footer buttons exactly: flat, bordered,
+   app font, accent on hover. */
+.doclib-card-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-sizing: border-box;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  cursor: pointer;
+  /* These buttons live inside .doclib-card-preview, which forces a
+     monospace font. The chat/research footer buttons instead inherit the
+     modal font, which is the app font (Fira Code) on mobile and Inter on
+     desktop (.modal-content's Inter rule is inside @media min-width:769px).
+     Mirror that here so all three footers match in both contexts. */
+  font-family: var(--font-family, 'Fira Code', monospace);
+  transition: border-color 0.15s, color 0.15s;
+}
+@media (min-width: 769px) {
+  .doclib-card-action-btn {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.015em;
+  }
+}
+.doclib-card-action-btn:hover {
+  border-color: var(--accent, var(--red));
+  color: var(--accent, var(--red));
+}
+.doclib-card-text-btn-danger {
+  color: var(--color-danger, #e06c75);
+  border-color: var(--color-danger, #e06c75);
+}
+.doclib-card-text-btn-danger:hover {
+  color: #ff4d4d;
+  border-color: #ff4d4d;
+}
+.doclib-card-expanded-actions > .doclib-card-action-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+/* Push the Open/Clone group to the right edge of the action bar â€” Delete
+   anchors the left, primary actions sit opposite. */
+.doclib-card-expanded-actions > .doclib-action-group {
+  margin-left: auto;
+}
+.doclib-btn-hint {
+  font-weight: normal;
+  opacity: 0.35;
+  font-size: 8px;
+  min-width: 58px;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+@media (max-width: 768px) {
+  .doclib-btn-hint { display: none !important; }
+}
+
+/* Chat row expand preview â€” matches the documents-tab expand style. */
+.doclib-chat-row { flex-direction: column; align-items: stretch; }
+.doclib-chat-row .doclib-card-chevron {
+  opacity: 0.3;
+  transition: transform 0.2s ease, opacity 0.15s;
+  flex-shrink: 0;
+}
+.doclib-chat-row.doclib-card-expanded .doclib-card-chevron {
+  opacity: 0.6;
+}
+/* Release .memory-item's base max-height: 200px when a chat row is
+   expanded. Without this, the row clips at 200px on desktop and the
+   preview's messages/actions visually spill past the row's box â€”
+   "colliding" with the next chat in the column. The mobile takeover
+   below already handles this via the same override; this rule is the
+   desktop-or-any-viewport equivalent. */
+.doclib-chat-row.doclib-card-expanded {
+  max-height: none;
+  overflow: visible;
+}
+/* When a chat row is expanded, take over the grid the same way documents
+   do: hide siblings, hide the admin-card toolbar, and let this row plus
+   its preview claim the full available height. .memory-item's default
+   max-height: 200px must be overridden or the preview will be tiny. */
+/* Mobile-only "card takeover" for an expanded chat â€” hides siblings,
+   hides the admin-card toolbar, and lets this row + its preview claim
+   the full available height. On desktop the expanded preview just
+   renders inline below the row with its messages constrained by
+   max-height + overflow:auto so the user gets a normal scroll. */
+@media (max-width: 820px) {
+  .doclib-grid:has(.doclib-chat-row.doclib-card-expanded) > .doclib-chat-row:not(.doclib-card-expanded) {
+    display: none;
+  }
+  .admin-card:has(.doclib-chat-row.doclib-card-expanded) > *:not(.doclib-grid) {
+    display: none;
+  }
+  .admin-card:has(.doclib-chat-row.doclib-card-expanded) > .doclib-grid {
+    flex: 1 1 auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+  .doclib-chat-row.doclib-card-expanded {
+    flex: 1 1 auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .doclib-chat-row.doclib-card-expanded .doclib-chat-header {
+    flex: 0 0 auto !important;
+  }
+  .doclib-chat-row.doclib-card-expanded .doclib-chat-preview {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding-bottom: 4px !important;
+  }
+  .doclib-chat-row.doclib-card-expanded .doclib-chat-preview-messages {
+    -webkit-overflow-scrolling: touch;
+    max-height: none !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+  }
+}
+.doclib-chat-preview {
+  font-size: 11px;
+  padding: 0 4px 6px;
+}
+.doclib-chat-preview .doclib-chat-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+.doclib-chat-preview .doclib-chat-open-btn:hover {
+  border-color: var(--accent, var(--red));
+  color: var(--accent, var(--red));
+}
+.doclib-chat-preview-messages {
+  margin-top: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+}
+/* Desktop expanded state â€” match the documents-tab behavior: hide
+   sibling chats, hide the admin-card toolbar/header, and let the
+   expanded row + its messages preview claim the full modal height.
+   Chat rows use `memory-item doclib-chat-row` (no `doclib-card` class)
+   so the document-tab's global rules at line 12284-12304 skip them â€”
+   these mirror those rules scoped to chat rows. The mobile media query
+   above (820px) keeps the same takeover behavior for phones. */
+@media (min-width: 821px) {
+  .doclib-grid:has(.doclib-chat-row.doclib-card-expanded) > .doclib-chat-row:not(.doclib-card-expanded) {
+    display: none;
+  }
+  .admin-card:has(.doclib-chat-row.doclib-card-expanded) > *:not(.doclib-grid) {
+    display: none;
+  }
+  .admin-card:has(.doclib-chat-row.doclib-card-expanded) > .doclib-grid {
+    flex: 1 1 auto !important;
+    max-height: none !important;
+    overflow: hidden auto !important;
+  }
+  .doclib-chat-row.doclib-card-expanded {
+    flex: 1 1 auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .doclib-chat-row.doclib-card-expanded .doclib-chat-preview {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .doclib-chat-row.doclib-card-expanded .doclib-chat-preview-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+}
+.doclib-chat-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 2px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
+  margin-top: 2px;
+  flex-shrink: 0;
+  /* Whole action footer nudged down 5px. */
+  position: relative;
+  top: 5px;
+}
+.doclib-chat-delete-btn,
+.doclib-chat-archive-btn,
+.doclib-chat-restore-btn,
+.doclib-chat-discuss-btn,
+.doclib-chat-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+.doclib-chat-archive-btn,
+.doclib-chat-restore-btn,
+.doclib-chat-discuss-btn,
+.doclib-chat-copy-btn {
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+}
+/* Restore sits on the right of the Delete in archive previews. */
+.doclib-chat-restore-btn { margin-left: auto; }
+.doclib-chat-restore-btn:hover {
+  color: var(--accent, var(--red));
+  border-color: var(--accent, var(--red));
+}
+/* Delete + Archive pin to the left of the actions row; the
+   `margin-right: auto` on the last left-side button (Archive) pushes
+   Copy + Open to the right. Delete sits furthest left. */
+.doclib-chat-archive-btn { margin-right: auto; }
+.doclib-chat-archive-btn:hover,
+.doclib-chat-discuss-btn:hover,
+.doclib-chat-copy-btn:hover {
+  color: var(--accent, var(--red));
+  border-color: var(--accent, var(--red));
+}
+.doclib-chat-delete-btn {
+  color: var(--color-danger, #e06c75);
+  border: 1px solid var(--color-danger, #e06c75);
+}
+.doclib-chat-delete-btn:hover {
+  color: #ff4d4d;
+  border-color: #ff4d4d;
+}
+/* When a chat is archived there's no Archive button, so Delete becomes
+   the only left-side action and needs the auto margin to push Open right. */
+.doclib-chat-preview-actions:not(:has(.doclib-chat-archive-btn)) > .doclib-chat-delete-btn {
+  margin-right: auto;
+}
+/* Hide the "..." menu while the chat card is expanded â€” archive +
+   delete live in the preview footer instead. */
+.doclib-chat-row.doclib-card-expanded ._chat-menu { display: none; }
+.doclib-chat-preview-actions.doclib-chat-preview-actions-top {
+  border-top: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
+  margin-top: 4px;
+  margin-bottom: 6px;
+  padding: 0 0 6px;
+  justify-content: flex-start;
+}
+.doclib-chat-preview-messages .doclib-chat-msg {
+  margin: 4px 0 10px;
+  padding-left: 8px;
+  border-left: 2px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.doclib-chat-preview-messages .doclib-chat-msg.user {
+  border-left-color: color-mix(in srgb, var(--accent, var(--red)) 60%, transparent);
+}
+.doclib-chat-preview-messages .doclib-chat-msg-role {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 2px;
+}
+.doclib-chat-preview-messages .doclib-chat-msg.user .doclib-chat-msg-role {
+  color: var(--accent, var(--red));
+  opacity: 0.85;
+}
+.doclib-chat-preview-messages .doclib-chat-msg-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.85;
+  line-height: 1.45;
+}
+/* Chat-bubble preview â€” mirrors the real chat layout. User bubbles hug
+   right with an accent tint; assistant bubbles hug left with a neutral
+   panel tint and a small model tag at the top. */
+.doclib-chat-bubble-row {
+  display: flex;
+  margin: 6px 0;
+}
+.doclib-chat-bubble-row.user { justify-content: flex-end; }
+.doclib-chat-bubble-row.assistant { justify-content: flex-start; }
+.doclib-chat-bubble {
+  max-width: 85%;
+  padding: 6px 10px 8px;
+  border-radius: 14px;
+  font-size: 11px;
+  line-height: 1.45;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.doclib-chat-bubble-row.user .doclib-chat-bubble {
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 30%, transparent);
+  border-bottom-right-radius: 4px;
+}
+.doclib-chat-bubble-row.assistant .doclib-chat-bubble {
+  border-bottom-left-radius: 4px;
+}
+.doclib-chat-msg-model {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 3px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg-muted, var(--fg));
+}
+.doclib-chat-bubble-body { word-break: break-word; }
+.doclib-chat-bubble-body p { margin: 4px 0; }
+.doclib-chat-bubble-body p:first-child { margin-top: 0; }
+.doclib-chat-bubble-body p:last-child { margin-bottom: 0; }
+.doclib-chat-bubble-body pre {
+  font-size: 10px;
+  margin: 4px 0;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.doclib-chat-bubble-body code {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.doclib-chat-bubble-body pre code { background: none; padding: 0; }
+.doclib-chat-bubble-body ul,
+.doclib-chat-bubble-body ol {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.doclib-card-collapse-chevron {
+  display: none;
+  align-items: center;
+  opacity: 0.3;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 4px;
+  transition: opacity 0.15s;
+}
+.doclib-card-collapse-chevron:hover {
+  opacity: 0.7;
+}
+.doclib-card-expanded .doclib-card-collapse-chevron {
+  display: inline-flex;
+}
+/* Expanded card â€” fills the whole grid */
+.doclib-card.doclib-card-expanded {
+  flex: 1;
+  min-height: 0;
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: doclib-expand 0.2s ease-out;
+}
+@keyframes doclib-expand {
+  from { opacity: 0.5; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.doclib-card.doclib-card-expanded {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  max-height: none !important;
+  gap: 4px !important;
+}
+.doclib-card.doclib-card-expanded > .memory-item-actions { display: none; }
+/* Non-preview children of an expanded doc card carry an inline flex:1 from
+   the row layout. With the card now flex-column those children would steal
+   half the height and shrink the preview â€” pin them at auto height. */
+.doclib-card.doclib-card-expanded > div:not(.doclib-card-preview):not(.doclib-card-header):not(.memory-item-actions):not(.email-card-reader) {
+  flex: 0 0 auto !important;
+}
+/* The email reader IS the scroll container â€” keep its flex:1 so its
+   internal body can claim the rest of the card's height and scroll. */
+.doclib-card.doclib-card-expanded > .email-card-reader {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+.doclib-card.doclib-card-expanded .doclib-card-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto !important;
+  overflow-y: auto;
+  min-height: 0;
+}
+.doclib-card.doclib-card-expanded .doclib-card-expanded-actions {
+  display: flex;
+  flex-shrink: 0;
+}
+
+/* Collapsible skills section headers (Your skills / Built-in). */
+.skills-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 4px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+  font-weight: 600;
+}
+.skills-section-header:hover { opacity: 0.9; }
+.skills-section-chevron { transition: transform 0.15s ease; flex-shrink: 0; }
+.skills-section-header.collapsed .skills-section-chevron { transform: rotate(-90deg); }
+.skills-section-count {
+  margin-left: auto;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+  font-weight: normal;
+}
+.skill-card-section-hidden { display: none !important; }
+/* Warning banner shown when previewing/editing a built-in capability. */
+.skill-builtin-warn {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--color-warning, #f0ad4e);
+  background: color-mix(in srgb, var(--color-warning, #f0ad4e) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning, #f0ad4e) 35%, transparent);
+  border-radius: 6px;
+  padding: 6px 9px;
+  margin: 0 0 8px;
+  flex-shrink: 0;
+}
+/* Hide the section headers while a card is expanded (full-screen reader). */
+.doclib-grid:has(.doclib-card-expanded) > .skills-section-header { display: none; }
+
+/* #skills-list wears both .memory-list and .doclib-grid. doclib-grid's
+   max-height:400px would cap the list AND clamp an expanded card â€” keep
+   the memory-list fill-the-modal behaviour instead. */
+#skills-list.doclib-grid {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+}
+#skills-list.doclib-grid:has(.doclib-card-expanded) {
+  overflow: hidden;  /* expanded card owns its own scroll */
+}
+/* When a skill is expanded, hide the sibling Add-Skill form card so the
+   expanded SKILL.md uses the full panel. Otherwise the two admin-cards
+   split the height ~50/50 and the expanded skill is stuck in its half
+   while the Add form idles in the other. */
+.memory-tab-panel[data-memory-panel="skills"]:has(.doclib-card-expanded) > .admin-card:nth-of-type(2) {
+  display: none !important;
+}
+
+/* Skills cards reuse the doclib expand/footer machinery. The SKILL.md
+   preview + the edit textarea need to fill the expanded card and own
+   their own scroll, same as a document preview. */
+/* Collapsed skill rows used a smaller (0.9em code) title, so the click row
+   read slimmer than document/chat/library cards. Give the header a min-height
+   so the tap target matches the other library items. */
+.skill-card > .skill-card-header {
+  min-height: 46px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.skill-conf-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+/* Name + description column. Name wraps to 2 lines (skill slugs are long â€”
+   use the space rather than truncating to "check-model-downlâ€¦"). */
+.skill-card-textcol {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.skill-card-name {
+  font-weight: 600;
+  font-size: 0.9em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  line-height: 1.3;
+}
+.skill-card-desc {
+  font-size: 10px;
+  opacity: 0.55;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Right cluster â€” pills (right-aligned), stats, then the menu/chevron. */
+.skill-card-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.skill-card-right .memory-cat-badge { flex-shrink: 0; }
+.skill-model-pill {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-model-student {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.skill-model-teacher {
+  background: color-mix(in srgb, var(--color-warning, #f0ad4e) 24%, transparent);
+  color: var(--color-warning, #f0ad4e);
+}
+.skill-necessity-pill {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-necessity-duplicate {
+  background: color-mix(in srgb, var(--color-warning, #f0ad4e) 22%, transparent);
+  color: var(--color-warning, #f0ad4e);
+}
+.skill-necessity-trivial {
+  background: color-mix(in srgb, var(--color-danger, #e06c75) 26%, transparent);
+  color: var(--color-danger, #e06c75);
+  border-color: color-mix(in srgb, var(--color-danger, #e06c75) 38%, transparent);
+}
+.skill-necessity-irrelevant {
+  background: color-mix(in srgb, var(--color-danger, #e06c75) 18%, transparent);
+  color: var(--color-danger, #e06c75);
+}
+.skill-duplicate-keep {
+  background: color-mix(in srgb, var(--color-success, #4ade80) 22%, transparent);
+  color: var(--color-success, #4ade80);
+}
+.skill-duplicate-lower {
+  background: color-mix(in srgb, var(--color-danger, #e06c75) 14%, transparent);
+  color: var(--color-danger, #e06c75);
+}
+.skill-stats {
+  font-size: 9px;
+  font-family: monospace;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.skill-conf { font-weight: 700; }
+.skill-verified,
+.skill-teachermark,
+.skill-needsmark {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: 3px;
+}
+.skill-verified { color: var(--accent, #4ade80); }
+.skill-teachermark { color: var(--color-warning, #f0ad4e); }
+.skill-needsmark { color: var(--color-danger, #e06c75); cursor: help; }
+
+/* The card currently being processed by an "Audit now" run glows + pulses so
+   it's obvious which one the audit is on. */
+@keyframes skill-audit-pulse {
+  0%, 100% { box-shadow: 0 0 6px 0 color-mix(in srgb, var(--accent, #4ade80) 55%, transparent); }
+  50%      { box-shadow: 0 0 16px 3px color-mix(in srgb, var(--accent, #4ade80) 85%, transparent); }
+}
+.skill-card.skill-audit-active {
+  border-color: var(--accent, #4ade80) !important;
+  animation: skill-audit-pulse 1.3s ease-in-out infinite;
+}
+
+/* A test is running for this skill â€” the app's whirlpool spinner is injected
+   next to the name from JS (see _setCardRunning) so the collapsed/folded card
+   still makes it obvious work is in progress. */
+/* Collapsed bar shows the kebab menu; expanded shows an up-chevron to
+   collapse. (Toggled by the .doclib-card-expanded class.) */
+.skill-kebab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 4px;
+  margin: 0;
+  cursor: pointer;
+  color: var(--fg);
+  opacity: 0.5;
+  border-radius: 5px;
+  flex-shrink: 0;
+  position: relative;
+  top: -2px;
+}
+.skill-kebab-btn:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.skill-chevron-up { display: none; align-items: center; opacity: 0.5; flex-shrink: 0; }
+.skill-card.doclib-card-expanded .skill-kebab-btn { display: none; }
+.skill-card.doclib-card-expanded .skill-chevron-up { display: inline-flex; }
+/* Kebab dropdown */
+.skill-kebab-menu {
+  position: fixed;
+  z-index: 100002;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--panel, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.skill-kebab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--fg);
+  font-size: 12px;
+  text-align: left;
+}
+.skill-kebab-item:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.skill-kebab-item.danger { color: var(--color-error, #e55); }
+.skill-kebab-item.danger:hover { background: color-mix(in srgb, var(--color-error, #e55) 15%, transparent); }
+/* Section labels separating "Your skills" from the read-only "Built-in
+   capabilities" list. */
+.skills-section-label {
+  font-size: 10px;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 10px 2px 4px;
+  flex-shrink: 0;
+}
+.skills-section-label:first-child { margin-top: 0; }
+/* When a learned skill is expanded the grid hides sibling cards; hide the
+   section labels too so they don't orphan above the collapsed list. */
+#skills-list:has(.doclib-card-expanded) .skills-section-label { display: none; }
+/* Built-in cards are read-only â€” no expand/hover-pointer affordance. */
+.skill-builtin-card { cursor: default; }
+.skill-builtin-card:hover { border-color: var(--border); }
+.skill-card-preview .skill-md-pre {
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Size the expanded skill card to its content (footer sits right under the
+   preview) but cap at the modal height so a long SKILL.md scrolls instead
+   of overflowing. The inherited `.doclib-card-expanded { flex: 1 }` forced
+   the card to fill the whole modal, which left a big empty void between a
+   short skill's text and the footer. */
+.skill-card.doclib-card-expanded {
+  flex: 0 1 auto !important;
+  max-height: 100% !important;
+}
+/* :has()-free expand layout. skills.js adds .skills-has-expanded to the
+   skills admin-card when a skill opens, so this works on engines that don't
+   support :has() (e.g. older Firefox mobile, where the expand stuck at
+   ~50%). Hide everything but the list so the grid fills the card; the
+   absolutely-positioned expanded card (mobile) then fills the grid. */
+.admin-card.skills-has-expanded > *:not(#skills-list) {
+  display: none !important;
+}
+.admin-card.skills-has-expanded > #skills-list.doclib-grid {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+/* Expand animation â€” a clean opacity fade. The mobile card snaps to a
+   full-screen overlay (position:absolute), so any translate/scale on it
+   reads as a jarring "explosion"; a pure fade just appears smoothly. (No
+   transform also keeps skills.js's height measurement accurate.) */
+@keyframes skill-card-expand {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.skill-card.doclib-card-expanded {
+  animation: skill-card-expand 0.18s ease-out;
+}
+/* Switching directly from one expanded card to another: no fade (it would
+   show the previous card collapsing through the semi-transparent new one). */
+.skill-card.doclib-card-expanded.skill-expand-instant {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skill-card.doclib-card-expanded,
+  .skill-card.doclib-card-expanded .doclib-card-preview {
+    animation: none !important;
+  }
+}
+/* The preview WRAPPER inherits flex:1 (grow) from the generic doclib expand
+   rule â€” that's what stretched the card and left a void / pushed the footer
+   out. Size it to content (shrink + scroll only when long) so the footer
+   sits right under the preview and stays fully visible. */
+.skill-card.doclib-card-expanded .doclib-card-preview {
+  flex: 0 1 auto !important;
+  min-height: 0;
+  /* The footer lives INSIDE this wrapper. Don't let the wrapper scroll, or
+     the footer scrolls off with the content. Keep it clipped; the <pre>
+     inside is the scroller, so the footer stays pinned at the bottom. */
+  overflow: hidden !important;
+}
+.skill-card.doclib-card-expanded .skill-md-pre {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Skill footer buttons sit 4px high (shared rule sets top:-4px) â€” drop them
+   back down 4px so they're vertically centered in the skill card footer. */
+.skill-card .doclib-card-expanded-actions > .doclib-card-action-btn,
+.skill-card .doclib-card-expanded-actions .doclib-action-btn-row > .doclib-card-action-btn {
+  top: 0;
+}
+/* Skills select-mode bulk bar â€” nudge Cancel / Approve / Delete up 2px. */
+#skills-bulk-bar .memory-toolbar-btn {
+  position: relative;
+  top: -2px;
+}
+/* â”€â”€ Email document type â”€â”€ */
+.doc-email-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.email-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.email-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg);
+  opacity: 0.5;
+  min-width: 50px;
+  text-align: right;
+}
+.email-field input {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--fg);
+  outline: none;
+}
+.email-field input:focus {
+  border-color: var(--accent, #4a9eff);
+}
+.email-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.email-draft-btn {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.email-draft-btn:hover { background: var(--hover-bg, rgba(255,255,255,0.05)); }
+.email-draft-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* â”€â”€ Email inbox list â”€â”€ */
+.email-body { border-top: 1px solid var(--border); }
+.email-folder-bar { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.email-folder-select {
+  background: transparent; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--fg); font-size: 11px; padding: 2px 6px; cursor: pointer; width: 100%; height: 26px;
+}
+.email-list { overflow-y: auto; max-height: 400px; }
+.email-item {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px;
+  cursor: pointer; border-bottom: 1px solid var(--border); position: relative; transition: background 0.1s;
+}
+.email-item:hover { background: var(--hover-bg, rgba(255,255,255,0.03)); }
+.email-item:hover .email-menu-btn { opacity: 0.5; }
+.email-item-spam { opacity: 0.4; }
+.email-item-spam:hover { opacity: 0.75; }
+.email-tag-spam {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: color-mix(in srgb, var(--accent, var(--red)) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 30%, transparent);
+  color: var(--accent, var(--red));
+  border-radius: 10px; padding: 1px 6px; font-size: 9px; font-weight: 600;
+  text-transform: lowercase; letter-spacing: 0.3px;
+}
+.email-spam-unflag {
+  background: none; border: none; color: inherit; cursor: pointer;
+  padding: 0 2px; font-size: 10px; line-height: 1; opacity: 0.6;
+}
+.email-spam-unflag:hover { opacity: 1; color: var(--fg); }
+/* Unread state is now a subtle icon, not full styling */
+.email-done-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%; background: transparent;
+  border: 1.5px solid var(--border); color: transparent;
+  flex-shrink: 0; cursor: pointer; transition: all 0.15s;
+  margin-right: 4px;
+}
+.email-done-check:hover { border-color: var(--accent, #4a9eff); }
+.email-done-check.active { background: var(--accent, #4a9eff); border-color: var(--accent, #4a9eff); color: #fff; }
+.email-done-check.active svg { display: block; }
+.email-done-check svg { display: none; }
+
+/* Auto-done flash: when a row gets marked done because the user just sent
+   a reply, briefly tint the whole row with the accent and pop the check
+   so the state change is hard to miss. Self-removes after ~1.2s. */
+@keyframes email-auto-done-row {
+  0%   { background: color-mix(in srgb, var(--accent, var(--red)) 22%, transparent); }
+  60%  { background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent); }
+  100% { background: transparent; }
+}
+@keyframes email-auto-done-check {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, var(--red)) 45%, transparent); }
+  40%  { transform: scale(1.4); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent, var(--red)) 0%, transparent); }
+  100% { transform: scale(1); }
+}
+.email-item.email-auto-done-flash { animation: email-auto-done-row 1.2s ease-out; }
+.email-item.email-auto-done-flash .email-done-check { animation: email-auto-done-check 0.6s ease-out; }
+
+/* Email titles that carry a cached AI summary get a thin underline-dot hint
+   so the user knows a hover-preview is available. */
+.memory-item-title.email-card-has-summary {
+  cursor: help;
+  text-decoration: underline dotted color-mix(in srgb, var(--accent) 60%, transparent) 1px;
+  text-underline-offset: 3px;
+}
+
+.doclib-card.email-card-removing {
+  pointer-events: none !important;
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  border-color: transparent !important;
+  opacity: 0;
+  transform: translateX(-10px) scale(0.985);
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s ease,
+    max-height 0.23s ease,
+    padding 0.23s ease,
+    margin 0.23s ease,
+    border-color 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doclib-card.email-card-removing {
+    transition: opacity 0.08s ease;
+    transform: none;
+  }
+}
+
+/* Library card done check â€” always visible, subtle icon next to title */
+.email-card-done {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; cursor: pointer;
+  transition: opacity 0.15s, color 0.15s;
+  opacity: 0.15; color: var(--fg);
+}
+/* Hover preview: bright accent when unchecked so the user sees a check coming.
+   Once active, keep the exact same color on hover so the done state does not
+   visually flip while the pointer is still over it. */
+.email-card-done:not(.active):hover {
+  opacity: 0.75 !important;
+  color: var(--accent-primary, var(--red));
+}
+.email-card-done.active { opacity: 0.95; color: var(--accent-primary, var(--red)); }
+.email-card-done.active:hover {
+  opacity: 0.95 !important;
+  color: var(--accent-primary, var(--red)) !important;
+}
+.email-card-done.just-checked {
+  animation: check-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Reverse animation when un-checking â€” shrink-and-fade so the click is
+   obviously felt even when hover styling otherwise keeps the icon visible. */
+.email-card-done.just-unchecked {
+  animation: check-unpop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes check-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.7) rotate(-10deg); }
+  70% { transform: scale(1.1) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes check-unpop {
+  0%   { transform: scale(1); opacity: 0.95; }
+  35%  { transform: scale(0.45) rotate(8deg); opacity: 0.05; }
+  65%  { transform: scale(0.9); opacity: 0.2; }
+  100% { transform: scale(1); }
+}
+
+/* Expanded email preview in library â€” override .memory-item row layout */
+.doclib-card.email-card-expanded.memory-item {
+  cursor: default !important;
+  background: var(--bg) !important;
+  border: 1px solid var(--border) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  /* Fill the available grid height instead of the old hardcoded 70vh â€”
+     the modal already caps height (90dvh on mobile, auto on desktop), so
+     the card just needs to flex into whatever remains. */
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  gap: 0 !important;
+}
+.doclib-card.email-card-expanded.memory-item > div:first-child {
+  /* The summary content (subject, date) - acts as the title bar. Left padding
+     trimmed 14â†’6px to shift the title 8px left total. */
+  padding: 2px 4px 10px !important;  /* top trimmed to lift the header text up */
+  margin-top: -14px !important;      /* pull the whole bar up into the freed space */
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto !important;
+  width: 100%;
+}
+/* Keep the per-card '...' actions menu visible while the email card is
+   expanded â€” we used to hide it and surface a duplicate menu button in
+   the expanded header, but that was redundant. The bottom menu now
+   carries the actions in both states. */
+/* When expanded inline, show the subject a touch larger than the 12px card
+   title (close to the new-tab window header) without being oversized. */
+.doclib-card.email-card-expanded .memory-item-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+/* The sender name is redundant once expanded (the From: row shows it just
+   below), so drop it and keep only the date â€” which then sits left-aligned
+   directly under the subject. Nudge the date 1px right to line up exactly with
+   the subject text, and up closer to it. */
+.doclib-card.email-card-expanded .email-meta-sender,
+.doclib-card.email-card-expanded .email-meta-sep {
+  display: none;
+}
+.doclib-card.email-card-expanded .memory-item-meta {
+  margin-top: -9px !important;
+}
+.doclib-card.email-card-expanded .email-meta-date {
+  margin-left: 3px;
+}
+.email-card-reader {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  font-size: 12px;
+}
+.email-card-reader-loading {
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+}
+.email-card-reader-loading .spinner-whirlpool,
+.email-card-reader-loading .ai-spinner-whirlpool {
+  opacity: 0.85;
+}
+/* Per-email unread dot in the expanded reader's title row. Background color
+   stays inline (per-sender hue from _senderColor), but the dot gets a soft
+   breathing glow + a 4px vertical nudge so it reads as centered against
+   the row instead of riding the baseline. */
+.email-card-unread-dot {
+  position: relative;
+  top: 0;
+  animation: email-card-unread-breathe 2.2s ease-in-out infinite;
+}
+@keyframes email-card-unread-breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent);
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    /* currentColor here is unreliable (background, not color) â€” use a
+       subtle white-tinted halo so the glow shows on any sender hue. */
+    box-shadow: 0 0 6px 2px rgba(255, 255, 255, 0.18);
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .email-card-unread-dot { animation: none; }
+}
+.email-reader-header {
+  display: flex;
+  flex-direction: row;
+  /* Top-align so when the user expands To/Cc, the action cluster
+     stays on the From line above instead of drifting to the middle. */
+  align-items: flex-start;
+  gap: 12px;
+  /* Taller header so the 44px-tall absolute-positioned action
+     cluster inside the From row has vertical breathing room. */
+  padding: 8px 14px;
+  min-height: 60px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  /* Containing block for the absolute action cluster. */
+  position: relative;
+  /* Container so the action-cluster wrap breakpoints below react to
+     the reader's own width instead of the page viewport. */
+  container-type: inline-size;
+  container-name: emailreader;
+}
+.email-reader-header > .email-reader-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* Meta block stacks the From / To / Cc rows; each row keeps label
+   tight to its chip(s) on the same line. The recipient-chips inside
+   scroll horizontally so long lists slide under the floating action
+   cluster on the right. */
+.email-reader-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  /* Positioning context for the absolute action cluster. */
+  position: relative;
+}
+.email-reader-meta .recipient-chips {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 4px;
+  max-width: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.email-reader-meta .recipient-chips::-webkit-scrollbar { display: none; }
+.email-reader-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.email-reader-meta-row.email-reader-meta-from {
+  position: relative;
+  /* Never wrap "From:" off the chip onto its own line â€” the chip
+     span has overflow-x scroll built in, so it shrinks/scrolls
+     instead of jumping to a new row. */
+  flex-wrap: nowrap;
+  min-width: 0;
+  /* Reserve space on the right for the 1-row cluster in wide mode. */
+  padding-right: 320px;
+}
+.email-reader-meta > .email-reader-meta-details {
+  min-width: 0;
+  padding-right: 320px;
+}
+.email-reader-meta > .email-reader-actions-inline {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 4px;
+  z-index: 2;
+  /* Sit visually above the From baseline like the lifted overlay. */
+  margin-top: -9px;
+}
+/* Recipient chip span keeps at least ~4 characters visible (60px)
+   before the overflow-scroll kicks in, so the sender / first
+   recipient name is always partly readable. */
+.email-reader-meta .recipient-chips {
+  min-width: 60px;
+}
+/* Medium reader widths: cap the cluster at 3 icons per row so it
+   never wraps past 2 rows. min-width forces the cluster to reserve
+   enough room for 3 icons in a row â€” without it, grid col 2 could
+   shrink below the cap and the cluster fanned out into 4+ short
+   rows. */
+@container emailreader (max-width: 450px) {
+  .email-reader-meta > .email-reader-actions-inline {
+    /* 3 icons (48px each) + 2 gaps (4px each) = 152px exact. Adding
+       6px slack so subpixel rounding can't tip a row from 3 to 2
+       icons and fan the cluster into a 3rd row. */
+    min-width: 158px;
+    max-width: 158px;
+    /* Solid background so the email body content behind the cluster
+       doesn't peek through the gaps between icons or the slack on
+       the right edge when the cluster's wrapped to 2 rows. */
+    background: var(--bg);
+  }
+  /* Tighten the right-side padding now that the cluster is 158px
+     wide (instead of the ~308 wide 1-row layout). */
+  .email-reader-meta-row.email-reader-meta-from,
+  .email-reader-meta > .email-reader-meta-details {
+    padding-right: 170px;
+  }
+  /* Cluster wrapped to 2 rows (44px + 4 gap + 44px = 92px) sits
+     absolute above the From baseline. Set min-height on the meta
+     (a descendant of the container, more reliable than targeting
+     the container itself) so the header grows enough to contain
+     the cluster + 4px of breathing room between the cluster's
+     bottom and the header bottom. */
+  .email-reader-meta {
+    min-height: 96px;
+  }
+}
+/* Very narrow reader: once the chip span has shrunk to its ~4
+   character min, the cluster snaps to absolute overlay with a soft
+   shadow so it visually floats above the truncated chip. */
+@container emailreader (max-width: 380px) {
+  /* Pane too narrow even for 158px of right-side reservation â€” kill
+     the padding so chips use the full width, and let the cluster
+     overlay via z-index + shadow. */
+  .email-reader-meta-row.email-reader-meta-from,
+  .email-reader-meta > .email-reader-meta-details {
+    padding-right: 0;
+  }
+  .email-reader-meta > .email-reader-actions-inline {
+    /* Keep the same -7px lift as the medium-width state so the
+       cluster doesn't slide ~4px DOWN when it transitions into
+       overlay mode. */
+    /* margin-top stays inherited at -7px from the base rule. */
+    /* 158px content + 22px padding-left so the inner row still fits
+       3 icons cleanly. */
+    min-width: 180px;
+    max-width: 180px;
+    background: linear-gradient(to right, transparent 0, var(--bg) 18px);
+    padding-left: 22px;
+    /* Soft shadow on the left edge so the overlap reads as the
+       cluster "floating over" the chip. */
+    box-shadow: -6px 0 12px -6px rgba(0, 0, 0, 0.25);
+  }
+}
+/* Mobile: drop the box-shadow AND the left-edge gradient fade â€”
+   either can read as a shadow under the icons on phone screens.
+   Also lift the cluster 1px more.  !important needed because the
+   @container query overlay rule has the same selector specificity. */
+@media (max-width: 768px) {
+  .email-reader-meta > .email-reader-actions-inline {
+    box-shadow: none !important;
+    background: none !important;
+    padding-left: 0 !important;
+    margin-top: -10px;
+  }
+}
+/* Docked panes used to flow the cluster under the meta; now they
+   share the same absolute-top-right + wrap behaviour as undocked.
+   No docked-specific overrides â€” the container queries below pick
+   the right cluster size and overlay state from the reader width. */
+/* Accent-tint the email-search (from-sender) magnifying glass so
+   it reads as a deliberate search action against the other icons. */
+.email-reader-actions-inline .reader-icon-btn[data-act="from-sender"] svg {
+  color: var(--accent-primary, var(--red));
+  stroke: var(--accent-primary, var(--red));
+}
+/* Gmail-style chevron â€” collapsed view shows only From; the chevron
+   reveals the To/Cc details inline below. */
+.email-reader-meta-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: -3px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.email-reader-meta-toggle:hover { opacity: 1; background: color-mix(in srgb, currentColor 10%, transparent); }
+.email-reader-meta-toggle svg { transition: transform 0.15s ease; }
+.email-reader-meta-toggle.open svg { transform: rotate(180deg); }
+.email-reader-meta-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.email-reader-meta-details[hidden] { display: none; }
+/* When expanded, To/Cc pop up as a floating panel below the From
+   row instead of pushing the email body down. From-row stays
+   exactly where it was; nothing else has to reflow, which kills
+   all the jump/realign quirks. */
+.email-reader-meta > .email-reader-meta-details:not([hidden]) {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  z-index: 5;
+}
+.email-reader-header > .email-reader-meta {
+  flex: 1; min-width: 0;
+  opacity: 0.85; line-height: 1.7; font-size: 11px;
+}
+/* Reserve a fixed label width so From: / To: / Cc: all align and
+   their chips start at the same x. */
+.email-reader-meta-row strong { opacity: 0.5; font-weight: 600; flex-shrink: 0; min-width: 36px; }
+.email-reader-meta-row > span {
+  white-space: nowrap;
+  min-width: 0;
+}
+/* Recipient chips */
+.recipient-chips {
+  display: inline-flex !important; flex-wrap: wrap; gap: 4px;
+  white-space: normal !important; overflow: visible !important;
+  text-overflow: clip !important;
+}
+.recipient-chip {
+  display: inline-flex; align-items: center;
+  gap: 5px;
+  padding: 1px 8px; font-size: 10px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--fg);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, max-width 0.2s;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recipient-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recipient-chip-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  top: -2px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.recipient-chip-copy:hover,
+.recipient-chip-copy.copied {
+  opacity: 1;
+  color: var(--accent-primary, var(--red));
+}
+.recipient-chip-copy[hidden] {
+  display: none !important;
+}
+.recipient-chip:hover {
+  background: color-mix(in srgb, var(--accent-primary, var(--red)) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 40%, transparent);
+}
+.recipient-chip.expanded {
+  background: color-mix(in srgb, var(--accent-primary, var(--red)) 15%, transparent);
+  border-color: var(--accent-primary, var(--red));
+  max-width: 500px;
+}
+@container docpane (max-width: 460px) {
+  .email-reader-header {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .email-reader-header > .email-reader-actions {
+    /* On narrow widths fall back to in-flow so it doesn't overlap
+       the meta entirely. */
+    position: static;
+    align-self: flex-end;
+    background: none;
+    padding-left: 0;
+  }
+  .email-reader-meta-row:not(.email-reader-meta-from) {
+    padding-right: 0;
+  }
+  .email-reader-meta-row strong {
+    min-width: 0;
+  }
+  .recipient-chip {
+    max-width: 100%;
+  }
+}
+/* Mobile: long recipient lists (To/Cc with many addresses) shouldn't wrap to
+   N rows and push the body down. Keep them on one row, horizontally scrollable,
+   no scrollbar chrome. */
+@media (max-width: 768px) {
+  .recipient-chips {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .recipient-chips::-webkit-scrollbar { display: none; }
+  .recipient-chip { flex-shrink: 0; }
+}
+.email-reader-actions {
+  display: flex; flex-direction: column; gap: 4px; align-items: flex-end;
+  flex-shrink: 0;
+  margin-top: -4px;
+}
+/* Two stacked rows: Reply/Reply-all/Forward on the From line, with
+   Summary/AI-reply/More on a row below. */
+.email-reader-actions-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.email-reader-atts {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.email-reader-body {
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  min-height: 0;
+  /* Use the OS colored emoji font for incoming mail content */
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif,
+               "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla";
+  font-variant-emoji: emoji;
+}
+/* When rendering HTML emails, override pre-wrap so layout works */
+.email-reader-body.html-body {
+  white-space: normal;
+}
+.email-reader-body.html-body img { max-width: 100%; height: auto; }
+.email-reader-body.html-body table { max-width: 100%; border-collapse: collapse; }
+/* Gmail Drive chips arrive with inline width/height/border/padding from
+   Gmail's composer (border:1px solid #ddd, white-ish bg assumed). On a
+   dark theme that reads as a near-invisible white box. Override with a
+   theme-aware chip surface so the filename + icon stay visible. */
+.email-reader-body .gmail_chip,
+.email-reader-body .gmail_drive_chip {
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px;
+  padding: 6px 10px !important;
+  margin: 6px 0 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.email-reader-body .gmail_chip:hover,
+.email-reader-body .gmail_drive_chip:hover {
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, var(--border)) !important;
+  background: color-mix(in srgb, var(--accent, var(--red)) 6%, transparent);
+}
+.email-reader-body .gmail_chip a,
+.email-reader-body .gmail_drive_chip a {
+  color: var(--accent, var(--red)) !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  max-width: 100% !important;
+}
+.email-reader-body .gmail_chip a > span,
+.email-reader-body .gmail_drive_chip a > span {
+  color: var(--fg) !important;
+  font-size: 12px;
+}
+.email-reader-body .gmail_chip img,
+.email-reader-body .gmail_drive_chip img {
+  width: 16px !important;
+  height: 16px !important;
+  padding-right: 0 !important;
+  filter: none;
+}
+/* Preserve highlights â€” sender's intent (snark, callouts) gets through, but
+   rendered with a theme-aware accent so it stays legible in any theme. The
+   sanitizer rewrites `<span style="background:yellow">â€¦</span>` to <mark>. */
+.email-reader-body mark {
+  background: color-mix(in srgb, var(--accent, var(--red)) 22%, transparent);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* "Other from this sender" â€” slide-out panel inside the email reader. */
+.email-card-reader.from-sender-open { position: relative; }
+.from-sender-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 280px;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.18);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  animation: from-sender-slide 0.22s ease-out;
+}
+@keyframes from-sender-slide {
+  from { transform: translateX(8px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.from-sender-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.from-sender-title-wrap { flex: 1; min-width: 0; }
+.from-sender-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.from-sender-addr {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.55;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.from-sender-count {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.from-sender-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.from-sender-loading { display: flex; justify-content: center; padding: 24px 0; }
+.from-sender-empty { padding: 16px 12px; font-size: 11px; opacity: 0.6; }
+/* Chat-bubble feel â€” each email row is a self-contained darker bubble. */
+.from-sender-row {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  border-radius: 12px;
+  color: var(--fg);
+  font-family: inherit;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+.from-sender-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+  /* Shifted text up 2px / left 2px relative to the bubble (padding 8/20 â†’ 6/18). */
+  padding: 6px 4px 10px 18px;
+  transition: background 0.12s;
+}
+.from-sender-row-main:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.from-sender-row-main:active { transform: translateY(1px); }
+.from-sender-row-more {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  opacity: 0.45;
+  width: 28px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.12s, background 0.12s;
+}
+.from-sender-row-more:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.from-sender-row:hover {
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 20%, transparent);
+}
+.from-sender-row.from-sender-unread { font-weight: 600; }
+.from-sender-row.from-sender-unread::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent, var(--red));
+  transform: translateY(-50%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent, var(--red)) 55%, transparent);
+}
+.from-sender-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.from-sender-row-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 3px;
+}
+.from-sender-subj {
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.from-sender-att {
+  flex-shrink: 0;
+  opacity: 0.55;
+  color: var(--fg);
+}
+.from-sender-row:hover .from-sender-att { opacity: 0.85; }
+.from-sender-date {
+  font-size: 10px;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.from-sender-folder {
+  font-size: 9px;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: auto;
+}
+/* Header row above search â€” holds the sender chip, attachment toggle,
+   and a small close X for exiting the panel. */
+.from-sender-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.from-sender-header-empty {
+  font-size: 11px;
+  opacity: 0.6;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.from-sender-close {
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  padding: 0 0 4px 0;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.55;
+  flex-shrink: 0;
+  position: relative;
+  top: -4px;
+  transition: opacity 0.12s, background 0.12s;
+}
+.from-sender-close:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.from-sender-toggle {
+  /* Default: compact 22x22 circle. When .is-active (filter ON) it stretches
+     vertically to match the header's content height â€” that's the visual cue
+     that the filter is engaged. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+  flex-shrink: 0;
+  margin-left: auto;
+  position: relative;
+  top: -2px;
+  transition: opacity 0.12s, background 0.12s, border-color 0.12s, color 0.12s,
+              height 0.18s ease, border-radius 0.18s ease;
+}
+.from-sender-toggle:hover { opacity: 1; }
+.from-sender-toggle.is-active {
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 40%, transparent);
+  color: var(--accent, var(--red));
+  opacity: 1;
+  /* Grow vertically to match the chip's height when the filter is engaged. */
+  align-self: stretch;
+  height: auto;
+  border-radius: 999px;
+  top: 0;
+}
+.from-sender-search-wrap {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+/* The search input now sits alone in its row (chip + toggles moved to the
+   header), so render it as a normal field instead of a chip-input child. */
+.from-sender-search-wrap > .from-sender-search {
+  width: 100%;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.from-sender-search-wrap > .from-sender-search:focus { border-color: var(--accent, var(--red)); }
+.from-sender-search-wrap { position: relative; }
+
+/* Multi-chip container in the header â€” wraps when several chips accumulate. */
+.from-sender-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.from-sender-chips:empty { flex: 0 0 0; }
+
+/* Suggestion dropdown rendered just below the search input. */
+.from-sender-suggest {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: calc(100% - 4px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  z-index: 20;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.from-sender-suggest-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.from-sender-suggest-item:last-child { border-bottom: none; }
+.from-sender-suggest-item.active {
+  background: color-mix(in srgb, var(--accent, var(--red)) 12%, transparent);
+}
+.from-sender-suggest-item .suggest-name { font-weight: 500; }
+.from-sender-suggest-item .suggest-addr {
+  font-size: 11px;
+  opacity: 0.55;
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+/* Chip-input search bar â€” sender chip lives inline with the input;
+   X-ing the chip turns it into a global search. */
+.from-sender-chip-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  transition: border-color 0.15s;
+}
+.from-sender-chip-input:focus-within { border-color: var(--accent, var(--red)); }
+.from-sender-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 35%, transparent);
+  color: var(--accent, var(--red));
+  border-radius: 999px;
+  padding: 2px 4px 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  max-width: 60%;
+  flex-shrink: 0;
+}
+.from-sender-chip-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.from-sender-chip-x {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 18px;
+  line-height: 0.55;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  position: relative;
+  top: -4px;
+  transition: opacity 0.12s, background 0.12s;
+}
+.from-sender-chip-x:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent, var(--red)) 22%, transparent);
+}
+.from-sender-search {
+  flex: 1;
+  min-width: 80px;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 4px;
+  outline: none;
+}
+
+.from-sender-mode-note {
+  font-size: 9px;
+  opacity: 0.5;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.email-card-reader.from-sender-open .email-reader-body { padding-right: 292px; }
+@media (max-width: 768px) {
+  .from-sender-panel { width: 100%; }
+  .email-card-reader.from-sender-open .email-reader-body { padding-right: 0; visibility: hidden; }
+}
+/* Force any phone/sms/date/address auto-link to inherit the body color so
+   numbers don't render as bright-blue browser-default text inside email
+   content. format-detection in <head> turns off detection on iOS, but some
+   mail clients ship pre-wrapped tel: links â€” those still need taming. */
+.email-reader-body a[href^="tel:"],
+.email-reader-body a[href^="sms:"],
+.email-reader-body a[x-apple-data-detectors],
+.email-bubble-body a[href^="tel:"],
+.email-bubble-body a[href^="sms:"],
+.email-bubble-body a[x-apple-data-detectors],
+.email-thread-turn-body a[href^="tel:"],
+.email-thread-turn-body a[href^="sms:"],
+.email-thread-turn-body a[x-apple-data-detectors] {
+  color: inherit !important;
+  text-decoration: none !important;
+  pointer-events: auto;
+}
+.email-reader-body a,
+.email-bubble-body a,
+.email-thread-turn-body a {
+  color: var(--accent-primary, var(--red));
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  cursor: pointer;
+}
+.email-reader-body a:hover,
+.email-bubble-body a:hover,
+.email-thread-turn-body a:hover { opacity: 0.8; }
+/* Summary block â€” same band chrome as Attachments / Signature / Earlier-
+   thread (no accent tint, no rounded corners, no leading star icon). The
+   only difference is the label, so all collapsible sections in the email
+   reader look uniform. */
+.email-summary-panel {
+  margin: 0 0 12px 0;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--accent-primary, var(--red)) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary, var(--red)) 30%, transparent);
+  border-radius: 6px;
+}
+.email-summary-header {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  color: var(--accent-primary, var(--red)); opacity: 0.85;
+  margin-bottom: 6px; letter-spacing: 0.4px;
+}
+.email-summary-content {
+  font-size: 12px; line-height: 1.5; color: var(--fg); white-space: pre-wrap;
+}
+/* Click-to-fold: tap the summary header to collapse/expand. The chevron
+   flips when collapsed, the content hides + the panel's bottom margin
+   tightens so a folded summary doesn't take up vertical space. */
+.email-summary-toggle { cursor: pointer; user-select: none; }
+.email-summary-toggle:hover { opacity: 1; }
+.email-summary-panel.collapsed { padding-bottom: 6px; margin-bottom: 6px; }
+.email-summary-panel.collapsed .email-summary-header { margin-bottom: 0; }
+.email-summary-panel.collapsed .email-summary-content { display: none; }
+.email-summary-panel.collapsed .email-summary-chevron { transform: rotate(-90deg); }
+
+/* Foldable attachments â€” same fold-on-click UX as the summary panel. */
+.email-reader-atts-wrap {
+  display: flex; flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.email-reader-atts-header {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 14px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  color: var(--fg); opacity: 0.7;
+  cursor: pointer; user-select: none;
+  letter-spacing: 0.4px;
+}
+.email-reader-atts-wrap > .email-reader-atts {
+  border-bottom: none !important;
+}
+.email-reader-atts-wrap.collapsed > .email-reader-atts,
+.email-reader-atts-wrap.collapsed > .email-reader-atts-hidden-note { display: none; }
+.email-reader-atts-wrap.collapsed .email-summary-chevron { transform: rotate(-90deg); }
+.email-reader-atts-hidden-note {
+  padding: 0 14px 6px;
+  font-size: 10px;
+  color: var(--fg-muted);
+  opacity: 0.65;
+}
+
+/* Quote fold = neutral full-width band (matches attachments header). */
+.email-quote-fold {
+  margin: 0 -14px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--border) !important;
+  border-radius: 0;
+  outline: 0 !important;
+  box-shadow: none !important;
+  /* Neutralise any rich-mail HTML that injects a yellow / colored bg
+     or border onto blockquote ancestors. */
+  background: transparent !important;
+}
+/* Same neutralisation for any element nested inside the fold (the inner
+   blockquote, paragraphs, divs from the original message). Yellow outlines
+   in Outlook-style mails almost always come from inline border-color or
+   box-shadow on these. */
+.email-quote-fold *,
+.email-quote-fold *::before,
+.email-quote-fold *::after {
+  outline-color: transparent !important;
+  box-shadow: none !important;
+}
+.email-quote-fold blockquote,
+.email-quote-fold blockquote[type="cite"],
+.email-quote-fold table,
+.email-quote-fold div {
+  border-color: var(--border) !important;
+  /* Override the .msg blockquote rule that sets a colored left border via
+     var(--hl-function) â€” that's where the "yellow" outline was coming from. */
+  border-left-color: var(--border) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+/* JS marks the last .email-quote-fold in each email body with this class,
+   so it's the only one that gets rounded bottom corners. Avoids :has()
+   browser-support quirks. */
+.email-quote-fold.last-fold {
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+}
+/* â”€â”€ Threaded reply turns (recursive parser) â”€â”€ */
+.email-thread-turn-body {
+  padding: 8px 14px 4px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+/* Nested turns indent slightly + get their own card outline so the
+   reply hierarchy is obvious at a glance. */
+.email-thread-turn-body .email-thread-turn {
+  margin: 8px 0 4px;
+  margin-left: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 2%, transparent);
+}
+.email-thread-turn-body .email-thread-turn .email-fold-summary {
+  padding: 5px 10px;
+}
+.email-thread-turn-body .email-thread-turn .email-thread-turn-body {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+}
+/* The original blockquote's left stripe is redundant when each turn is
+   already a card â€” drop it inside thread bodies. */
+.email-thread-turn-body blockquote {
+  border-left: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+/* Flatten the inner blockquote: no rounded corners, no yellow tint
+   inherited from rich-mail HTML. Subtle left border + neutral bg. */
+.email-quote-fold blockquote {
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  border-left: 2px solid var(--border);
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit;
+}
+/* "From â€¦ Â· Date â€¦" chip appended to the summary line */
+.email-fold-summary-meta {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* Sender name is the primary affordance â€” slightly larger and not all-caps so
+   "From: Sam" feels like a click target on the person, not a section label. */
+.email-fold-summary-name {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.1px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.email-quote-fold .email-fold-summary {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 14px;
+  cursor: pointer; list-style: none;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.4px;
+  /* Force neutral page colors regardless of any rich-mail HTML wrapping us */
+  color: var(--fg) !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  text-shadow: none !important;
+  font-style: normal !important;
+  opacity: 0.7;
+  user-select: none;
+  border-radius: 0;
+}
+.email-quote-fold .email-fold-summary > * {
+  /* Prevent inline-color attrs on summary children (icon SVGs, meta span)
+     from picking up a forced color from ancestor email HTML. */
+  color: inherit !important;
+  background: transparent !important;
+}
+.email-quote-fold .email-fold-summary::-webkit-details-marker,
+.email-quote-fold .email-fold-summary::marker { display: none; content: none; }
+.email-quote-fold .email-fold-summary { list-style: none; list-style-type: none; }
+.email-quote-fold .email-fold-summary:hover { opacity: 1; }
+.email-quote-fold[open] .email-summary-chevron { transform: rotate(180deg); }
+.email-quote-fold[open] > *:not(summary) {
+  padding: 8px 14px 12px 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Signature fold = clean full-width band like the attachments header. No
+   accent overlay, no rounded corners â€” neutral chrome so it doesn't look
+   like the AI Summary panel. */
+.email-sig-fold {
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--fg) 18%, transparent);
+  background: transparent;
+  border-radius: 0;
+}
+.email-sig-fold .email-fold-summary {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 0;
+  cursor: pointer;
+  list-style: none; list-style-type: none;
+  font-size: 9.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--fg); opacity: 0.55;
+  user-select: none;
+}
+/* Suppress the global `summary::before { content: 'â–¶' }` rule from
+   leaking the chevron-emoji onto our header â€” we use the trailing SVG
+   chevron only. */
+.email-sig-fold .email-fold-summary::before,
+.email-quote-fold .email-fold-summary::before { content: none !important; }
+.email-sig-fold .email-fold-summary::-webkit-details-marker,
+.email-sig-fold .email-fold-summary::marker { display: none; content: none; }
+.email-sig-fold .email-fold-summary:hover { opacity: 1; }
+.email-sig-fold[open] .email-summary-chevron { transform: rotate(180deg); }
+.email-sig-fold[open] > *:not(summary) {
+  padding: 6px 0 0;
+  border-top: 0;
+  font-size: 11px; line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  white-space: pre-wrap;
+}
+
+/* â”€â”€ Chat-bubble layout for email threads â”€â”€
+   Each parsed turn becomes a bubble. The active account's outgoing
+   replies align right (mine); everyone else aligns left (theirs).
+   Bubbles read topâ†’bottom oldestâ†’newest, like a chat. */
+.email-bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 8px;
+  margin: 0 -2px;
+}
+.email-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.email-bubble-row.email-bubble-mine {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+.email-bubble-row.email-bubble-theirs {
+  /* Avatar lives at the END of the row (right side) so the bubble has
+     the full left edge to start from â€” gives bigger reading width and
+     a cleaner left margin. */
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+.email-bubble {
+  flex: 0 1 auto;
+  max-width: 90%;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12.5px;
+  line-height: 1.5;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+}
+.email-bubble-mine .email-bubble {
+  background: color-mix(in srgb, var(--bubble-accent, var(--fg)) 10%, var(--bg));
+  border-color: color-mix(in srgb, var(--bubble-accent, var(--border)) 35%, var(--border));
+  border-radius: 14px 14px 4px 14px;
+}
+.email-bubble-theirs .email-bubble {
+  background: color-mix(in srgb, var(--bubble-accent, var(--fg)) 5%, var(--panel));
+  border-color: color-mix(in srgb, var(--bubble-accent, var(--border)) 25%, var(--border));
+  border-radius: 14px 14px 14px 4px;
+}
+.email-bubble-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10.5px;
+  margin-bottom: 4px;
+  opacity: 0.7;
+  min-width: 0;
+}
+.email-bubble-mine .email-bubble-head { justify-content: flex-end; }
+.email-bubble-author {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50ch;
+}
+.email-bubble-date {
+  opacity: 0.7;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.email-bubble-body {
+  white-space: normal;
+  /* Reader-controlled typography â€” override sender's inline styles AND
+     attribute-based sizing (<font size>, <big>, <small>, h1..h6). Weight
+     and italics still pass through for emphasis. */
+  font-family: inherit;
+  font-size: var(--email-body-size, 13.5px);
+  line-height: 1.5;
+}
+.email-bubble-body *:not(code):not(pre):not(kbd):not(samp) {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+/* Heading tags carry browser-default font-size multipliers that bypass
+   `font-size: inherit` when an inline style was set; pin them too. */
+.email-bubble-body h1,
+.email-bubble-body h2,
+.email-bubble-body h3,
+.email-bubble-body h4,
+.email-bubble-body h5,
+.email-bubble-body h6,
+.email-bubble-body big,
+.email-bubble-body small,
+.email-bubble-body font {
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+.email-bubble-body img {
+  max-width: 100%;
+  height: auto;
+}
+/* Sender HTML often wraps content in a fixed-width <div style="width:600px">
+   or <table width="600">. Override so content fills the reader's available
+   width â€” otherwise resizing the email window doesn't reflow anything. */
+.email-bubble-body,
+.email-bubble-body * {
+  max-width: 100% !important;
+}
+.email-bubble-body div[style*="width"],
+.email-bubble-body table[width],
+.email-bubble-body table {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+.email-bubble-body blockquote {
+  border-left: 2px solid var(--border) !important;
+  margin: 4px 0 !important;
+  padding: 4px 10px !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  color: inherit;
+}
+.email-bubble-body table {
+  max-width: 100%;
+}
+.email-bubble-avatar {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  /* Per-sender color set inline (`style="background:hsl(...)"`); this
+     fallback only kicks in when JS hasn't assigned one. */
+  background: color-mix(in srgb, var(--fg) 14%, transparent);
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  user-select: none;
+}
+/* Sig folds inside a bubble: tone down â€” no full-bleed band, since the
+   bubble already provides the chrome. */
+.email-bubble-body .email-sig-fold {
+  margin: 8px 0 0;
+  border-top: 1px dashed var(--border);
+}
+.email-bubble-body .email-sig-fold .email-fold-summary,
+.email-bubble-body .email-quote-fold .email-fold-summary {
+  padding: 4px 0;
+}
+.email-bubble-body .email-sig-fold[open] > *:not(summary),
+.email-bubble-body .email-quote-fold[open] > *:not(summary) {
+  padding: 6px 0 0;
+  border-top: 0;
+}
+@media (max-width: 600px) {
+  .email-bubble { max-width: 96%; }
+  .email-bubble-avatar { display: none; }
+}
+
+/* â”€â”€ Schedule Send modal â”€â”€ */
+.schedule-send-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px 12px;
+}
+.schedule-send-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--fg);
+  opacity: 0.55;
+  margin-top: 6px;
+}
+.schedule-send-label:first-child { margin-top: 0; }
+.schedule-send-presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.schedule-send-presets .memory-toolbar-btn {
+  padding: 5px 10px 11px;
+  font-size: 12px;
+  justify-content: center;
+  line-height: 1;
+}
+.schedule-send-confirm svg {
+  width: 12px;
+  height: 12px;
+  vertical-align: -1px;
+  margin-right: 6px;
+}
+.schedule-send-datetime {
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.schedule-send-datetime:focus {
+  border-color: var(--hl-function);
+}
+.schedule-send-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.schedule-send-confirm {
+  background: var(--accent-primary, var(--red)) !important;
+  color: #fff !important;
+  border-color: var(--accent-primary, var(--red)) !important;
+}
+.schedule-send-confirm:hover {
+  background: color-mix(in srgb, var(--accent-primary, var(--red)) 85%, white) !important;
+}
+
+/* Senders embed inline colors in their HTML that clash with the app's
+   theme (black text in dark mode, white backgrounds, yellow highlights,
+   etc.). Force theme colors on every descendant of the rendered body so
+   emails inherit the user's chosen palette regardless of what the
+   sender's mail client emits. */
+.email-reader-body *,
+.email-bubble-body * {
+  color: var(--fg) !important;
+  -webkit-text-fill-color: currentColor !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+.email-reader-body a,
+.email-bubble-body a,
+.email-thread-turn-body a {
+  color: var(--hl-function) !important;
+}
+.email-reader-body a[href^="tel:"],
+.email-reader-body a[href^="sms:"],
+.email-reader-body a[href^="x-apple-data-detectors:"],
+.email-reader-body a[x-apple-data-detectors],
+.email-bubble-body a[href^="tel:"],
+.email-bubble-body a[href^="sms:"],
+.email-bubble-body a[href^="x-apple-data-detectors:"],
+.email-bubble-body a[x-apple-data-detectors],
+.email-thread-turn-body a[href^="tel:"],
+.email-thread-turn-body a[href^="sms:"],
+.email-thread-turn-body a[href^="x-apple-data-detectors:"],
+.email-thread-turn-body a[x-apple-data-detectors] {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-decoration: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+}
+
+/* Prefer local/system emoji fonts; avoid remote font providers. */
+.doc-editor-textarea, .doc-editor-highlight, #doc-editor-code,
+.doc-md-preview, .doc-csv-preview {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', monospace;
+  font-variant-emoji: text;
+}
+/* Preview panes claim the editor's space so the action footer stays pinned
+   at the bottom of the pane even when the rendered content is short
+   (shorter table, single-paragraph markdown, etc). */
+.doc-csv-preview,
+.doc-md-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Email documents override: use colored system emoji in compose. */
+.doc-editor-textarea.email-mode,
+#doc-editor-code.email-mode,
+#doc-editor-code.email-mode .doc-editor-highlight,
+#doc-editor-code.email-mode .doc-editor-textarea {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif,
+               "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla" !important;
+  font-variant-emoji: emoji;
+}
+
+/* Single-layer rendering for ALL documents (not just email): the highlight
+   overlay (<pre> with hljs spans) and the transparent textarea use two
+   different rendering paths internally â€” the textarea uses the browser's
+   native form line-breaker, the overlay uses CSS line-breaking â€” and they
+   can never be guaranteed to wrap byte-identical no matter how many CSS
+   properties are pinned. Pick one source of truth: make the textarea its
+   own visible text, hide the overlay. Trade-off: no syntax highlighting in
+   the live editor (rendered markdown preview / chat output still has it).
+   The caret is now glued to the typed text by definition since both are
+   rendered by the same element. */
+.doc-editor-highlight,
+#doc-editor-code.email-mode .doc-editor-highlight {
+  display: none !important;
+}
+/* Find bar is open: float the highlight overlay ON TOP of the
+   textarea with transparent background + transparent text, so only
+   the solid <mark.doc-find-mark> spans are visible. pointer-events
+   off so clicks still go through to the textarea below. */
+body.doc-find-active .doc-editor-highlight,
+body.doc-find-active #doc-editor-code.email-mode .doc-editor-highlight {
+  display: block !important;
+  z-index: 5 !important;
+  background: transparent !important;
+  pointer-events: none;
+}
+body.doc-find-active .doc-editor-highlight,
+body.doc-find-active .doc-editor-highlight * {
+  color: transparent !important;
+  background: transparent !important;
+}
+/* Marks remain solid so they pop through the otherwise-invisible
+   overlay; outlined extra-bright for the currently-focused one. */
+body.doc-find-active mark.doc-find-mark {
+  background: var(--accent) !important;
+  color: var(--bg) !important;
+}
+body.doc-find-active mark.doc-find-mark.current {
+  background: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--fg) !important;
+  outline: 1px solid var(--fg) !important;
+}
+.doc-editor-textarea,
+#doc-editor-code.email-mode .doc-editor-textarea {
+  color: var(--fg) !important;
+  caret-color: var(--fg) !important;
+  z-index: 1;
+}
+
+/* Emoji picker (monochrome icon picker) */
+.emoji-picker-btn {
+  background: none; border: none; color: var(--fg); opacity: 0.35;
+  padding: 4px 7px; cursor: pointer; min-height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: opacity 0.1s;
+}
+.emoji-picker-btn:hover { opacity: 1; }
+.emoji-picker {
+  width: min(300px, 92vw); max-height: min(300px, 55vh);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.emoji-picker-search {
+  padding: 8px 12px; background: var(--panel); border: none;
+  border-bottom: 1px solid var(--border); color: var(--fg);
+  font-size: 12px; font-family: inherit; outline: none;
+}
+.emoji-picker-groups { overflow-y: auto; padding: 4px 0; flex: 1; }
+.emoji-picker-group { padding: 0 6px 4px 6px; }
+.emoji-picker-group-name {
+  font-size: 10px; font-weight: 600; opacity: 0.5;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 4px 4px 2px 4px;
+}
+.emoji-picker-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px; }
+.emoji-picker-item {
+  background: none; border: none; cursor: pointer;
+  padding: 4px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg); transition: background 0.1s;
+}
+.emoji-picker-item:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.emoji-picker-item svg { width: 16px; height: 16px; }
+
+.email-avatar {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--accent, #4a9eff);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; flex-shrink: 0; margin-top: 1px;
+}
+.email-item-content { flex: 1; min-width: 0; overflow: hidden; }
+.email-item-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.email-sender { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.email-sender-clickable { cursor: pointer; }
+.email-sender-clickable:hover { text-decoration: underline; }
+.email-filter-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 4px 8px 6px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  background: color-mix(in srgb, var(--accent, var(--red)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--red)) 40%, transparent);
+  color: var(--fg);
+}
+.email-filter-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-filter-chip-clear {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.6;
+}
+.email-filter-chip-clear:hover { opacity: 1; }
+.email-date { font-size: 10px; opacity: 0.5; white-space: nowrap; flex-shrink: 0; }
+.email-subject { font-size: 11px; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.email-tags { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+.email-tag {
+  display: inline-block;
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 8px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: rgba(127, 127, 127, 0.18);
+  color: var(--fg);
+}
+.email-tag-work { background: rgba(96, 165, 250, 0.22); color: #60a5fa; }
+.email-tag-personal { background: rgba(74, 222, 128, 0.22); color: #4ade80; }
+.email-tag-finance { background: rgba(250, 204, 21, 0.22); color: #facc15; }
+.email-tag-bills { background: rgba(251, 146, 60, 0.22); color: #fb923c; }
+.email-tag-receipt { background: rgba(251, 146, 60, 0.22); color: #fb923c; }
+.email-tag-travel { background: rgba(167, 139, 250, 0.22); color: #a78bfa; }
+.email-tag-newsletter { background: rgba(148, 163, 184, 0.22); color: #94a3b8; }
+.email-tag-promo,
+.email-tag-marketing { background: rgba(244, 114, 182, 0.22); color: #f472b6; }
+.email-tag-notification { background: rgba(148, 163, 184, 0.22); color: #94a3b8; }
+.email-tag-security { background: rgba(248, 113, 113, 0.22); color: #f87171; }
+.email-tag-urgent { background: color-mix(in srgb, var(--color-error, #e06c75) 25%, transparent); color: var(--color-error, #e06c75); font-weight: 600; }
+.email-tag-reply-soon { background: rgba(240, 173, 78, 0.22); color: #f0ad4e; }
+.email-tag-social { background: rgba(56, 189, 248, 0.22); color: #38bdf8; }
+.email-tag-shopping { background: rgba(236, 72, 153, 0.22); color: #ec4899; }
+.email-tag-calendar { background: rgba(167, 139, 250, 0.22); color: #a78bfa; }
+.email-menu-wrap { position: relative; flex-shrink: 0; }
+.email-menu-btn {
+  background: none; border: none; color: var(--fg); opacity: 0; cursor: pointer;
+  padding: 4px; transition: opacity 0.15s;
+  position: relative; top: 0px;
+}
+.email-dropdown {
+  position: absolute; right: 0; top: 100%; z-index: 9999;
+  min-width: 120px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); padding: 4px 0;
+}
+.email-loading { padding: 16px; text-align: center; font-size: 12px; opacity: 0.5; }
+.email-load-more { padding: 8px; text-align: center; }
+.email-load-more-btn {
+  background: transparent; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--fg); padding: 4px 12px; font-size: 11px; cursor: pointer;
+}
+.email-load-more-btn:hover { background: var(--hover-bg, rgba(255,255,255,0.05)); }
+.email-spinner {
+  display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff; border-radius: 50%; animation: email-spin 0.6s linear infinite;
+  vertical-align: middle; margin-right: 4px;
+}
+@keyframes email-spin { to { transform: rotate(360deg); } }
+
+/* Email section doesn't collapse â€” hide the auto-injected chevron */
+#email-section .section-collapse-btn { display: none !important; }
+
+/* Compose + button: show on section hover, spin on button hover */
+#email-compose-btn {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+#email-section:hover #email-compose-btn {
+  opacity: 0.7;
+}
+#email-compose-btn:hover {
+  opacity: 1 !important;
+  background: none !important;
+}
+#email-compose-btn svg {
+  width: 11px;
+  height: 11px;
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#email-compose-btn .list-item-plus-label {
+  top: calc(50% - 0.5px);
+  color: var(--fg);
+  font-size: 10px;
+}
+#email-compose-btn:hover svg {
+  transform: rotate(180deg) scale(1.15);
+}
+
+/* Library row "+" â€” identical to the email compose "+": hidden until the row
+   is hovered, no accent box, and the same rotate-in animation. */
+#library-new-doc-btn {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+#tool-library-btn:hover #library-new-doc-btn {
+  opacity: 0.7;
+}
+#library-new-doc-btn:hover {
+  opacity: 1 !important;
+  background: none !important;
+}
+#library-new-doc-btn svg {
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#library-new-doc-btn .list-item-plus-label {
+  top: calc(50% + 1px);
+}
+#library-new-doc-btn:hover svg {
+  transform: rotate(180deg) scale(1.15);
+}
+
+/* Satisfying send effect: email slides out to the right and fades */
+.email-send-fx {
+  animation: email-send-slide 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+@keyframes email-send-slide {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+    filter: blur(0);
+  }
+  60% {
+    filter: blur(1px);
+  }
+  100% {
+    transform: translateX(110%);
+    opacity: 0;
+    filter: blur(3px);
+  }
+}
+
+/* MD toolbar attach button â€” matches other toolbar buttons */
+.md-toolbar-attach-btn {
+  background: none; border: none; color: var(--fg); opacity: 0.35;
+  padding: 4px 7px; cursor: pointer; min-height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: opacity 0.1s;
+}
+.md-toolbar-attach-btn:hover { opacity: 1; }
+
+/* Email reader icon buttons â€” vertical icon + label stack. */
+.memory-toolbar-btn.reader-icon-btn {
+  width: auto;
+  height: 44px;
+  /* padding: 4px 2px; */
+  position: relative;
+  top: 1px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.memory-toolbar-btn.reader-icon-btn svg { width: 18px; height: 18px; }
+.memory-toolbar-btn.reader-icon-btn.active {
+  background: color-mix(in srgb, var(--accent, var(--red)) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 40%, transparent);
+  color: var(--accent, var(--red));
+}
+/* The "More" (kebab) reader button â€” accent-colored so it stands out as the
+   actions-menu trigger. When the dropdown is open we add .reader-more-active
+   for a filled tint, matching the toggle states elsewhere. */
+.memory-toolbar-btn.reader-icon-btn[data-act="more"] {
+  color: var(--accent, var(--red));
+}
+.memory-toolbar-btn.reader-icon-btn[data-act="more"] svg { fill: currentColor; }
+.memory-toolbar-btn.reader-icon-btn.reader-more-active {
+  background: color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, transparent);
+  color: var(--accent, var(--red));
+}
+/* Cookbook Serve dropdown triggers (the cached-model kebab + the saved-config
+   arrow) â€” accent-colored to signal they open a menu, with a filled tint when
+   their dropdown is open. Matches the email reader More button pattern. */
+.hwfit-cached-menu-btn,
+.cookbook-saved-arrow {
+  color: var(--accent, var(--red));
+  /* Base .memory-item-btn is flex with align-items but no justify-content,
+     so the kebab SVG sat left-aligned inside the button instead of being
+     horizontally centered. Pin it center. */
+  justify-content: center;
+}
+.hwfit-cached-menu-btn svg { fill: currentColor; }
+.hwfit-cached-menu-btn.cookbook-menu-active,
+.cookbook-saved-arrow.cookbook-menu-active {
+  background: color-mix(in srgb, var(--accent, var(--red)) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--red)) 45%, transparent);
+  color: var(--accent, var(--red));
+}
+/* Mobile: center the kebab/menu dropdowns in the viewport so they don't
+   slide left/right as the window width changes (they were positioned via
+   inline `right: ...px` relative to the kebab button). Stable position is
+   easier to land on by touch. The inline `top:` set by the menu code is
+   preserved; we only override the horizontal axis. */
+@media (max-width: 768px) {
+  .email-card-dropdown,
+  .cookbook-saved-menu,
+  .cookbook-dep-menu {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%);
+  }
+}
+/* Mobile-only Cancel item appended to dropdowns (kebab/More menus). On
+   desktop outside-click closes them cleanly; on touch that's fiddly, so
+   give an explicit Cancel row. Visually separated from the action items
+   above by a top divider + slight muted color. */
+.dropdown-cancel-mobile { display: none; }
+@media (max-width: 768px) {
+  .dropdown-cancel-mobile {
+    display: flex;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    padding-top: 8px;
+    opacity: 0.85;
+  }
+}
+/* Launch-command Copy button morphs into Cancel once Launch has been clicked. */
+.hwfit-serve-copy.hwfit-serve-cancel {
+  border-color: var(--color-danger, #e06c75) !important;
+  color: var(--color-danger, #e06c75) !important;
+}
+.hwfit-serve-copy.hwfit-serve-cancel:hover {
+  background: color-mix(in srgb, var(--color-danger, #e06c75) 14%, transparent);
+}
+/* Email modal title unread badge â€” small accent pill next to "Email". */
+.email-lib-unread-badge {
+  display: inline-block;
+  font-size: 0.55em;
+  font-weight: 700;
+  background: var(--accent-primary, var(--red));
+  color: var(--bg, #1a1a1a);
+  border-radius: 9px;
+  padding: 1px 7px;
+  margin-left: 8px;
+  vertical-align: 2px;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.email-lib-unread-badge:hover { filter: brightness(1.08); }
+#email-lib-modal.email-lib-unread-active .doclib-modal-content {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent, var(--red)) 22%, transparent),
+    0 0 18px color-mix(in srgb, var(--accent, var(--red)) 18%, transparent),
+    var(--shadow-lg, 0 18px 50px rgba(0, 0, 0, 0.35));
+}
+#email-lib-modal .email-lib-header-actions .minimize-btn {
+  position: relative;
+  left: 6px;
+}
+/* Per-card prev/next nav â€” only visible on the currently expanded card,
+   sits at the right of the title row next to the done check. */
+.email-card-nav-arrows {
+  display: none;
+  margin-left: auto;
+  gap: 2px;
+  flex-shrink: 0;
+  align-items: center;
+  position: relative;
+  top: -3px;
+  left: 19px;
+}
+.doclib-card.email-card-expanded .email-card-nav-arrows {
+  display: inline-flex;
+}
+.email-card-header-menu {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  opacity: 0.65;
+  cursor: pointer;
+  position: relative;
+  top: -3px;
+  transition: opacity 0.12s, background 0.12s;
+}
+.doclib-card.email-card-expanded .email-card-header-menu {
+  display: inline-flex;
+}
+.email-card-header-menu:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.email-card-nav-btn {
+  background: none;
+  border: none;
+  color: var(--fg);
+  opacity: 0.65;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.12s, background 0.12s;
+}
+.email-card-nav-btn:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.email-card-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* â”€â”€ Email document editor â”€â”€ */
+.doc-email-header {
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0;
+}
+.doc-email-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+.doc-email-collapse-btn {
+  width: 100%;
+  min-height: 24px;
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px 3px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.72;
+  text-align: left;
+}
+.doc-email-collapse-btn:hover { opacity: 1; color: var(--accent, var(--red)); }
+.doc-email-collapse-btn svg {
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: transform 0.14s ease;
+}
+.doc-email-collapse-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.74;
+}
+.doc-email-header:not(.doc-email-header-collapsed) .doc-email-collapse-summary {
+  opacity: 0.45;
+}
+.doc-email-header.doc-email-header-collapsed {
+  gap: 0;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.doc-email-header.doc-email-header-collapsed .doc-email-fields {
+  display: none;
+}
+.doc-email-header.doc-email-header-collapsed .doc-email-collapse-btn svg {
+  transform: rotate(180deg);
+}
+.email-field { display: flex; align-items: center; gap: 8px; position: relative; }
+.email-field label { font-size: 11px; font-weight: 600; color: var(--fg); opacity: 0.5; min-width: 50px; text-align: right; flex-shrink: 0; }
+.email-field input {
+  flex: 1; width: 100%; background: transparent; border: 1px solid var(--border); border-radius: 4px;
+  padding: 5px 8px; font-size: 13px; font-family: inherit; color: var(--fg); outline: none;
+  min-width: 0;
+}
+.email-field input:focus { border-color: var(--accent, #4a9eff); }
+@container docpane (max-width: 460px) {
+  .doc-email-header .email-field {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 3px;
+    align-items: stretch;
+  }
+  .doc-email-header .email-field label {
+    min-width: 0;
+    text-align: left;
+  }
+  .doc-email-header .email-field input {
+    width: 100%;
+  }
+}
+/* Cc toggle and attach button are absolute so they don't steal width
+   from the To input. Anchored to the input's vertical center + 4px
+   nudge so the label sits where the user expects it. */
+.email-field .email-cc-toggle {
+  position: absolute; right: 6px; top: calc(50% + 1px); transform: translateY(-50%);
+  z-index: 2;
+}
+/* Accent-tinted prefix label (To / Cc / Bcc / Subject) sitting at
+   the left edge of each input. Replaces both the old <label> tag
+   and the all-placeholder accent. */
+.email-field .email-field-prefix {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary, var(--red));
+  pointer-events: none;
+  z-index: 1;
+  line-height: 1;
+}
+.email-field input { padding-left: 44px; }
+.email-field #doc-email-subject { padding-left: 64px; }
+/* X close button inside Cc / Bcc fields. */
+.email-field .email-cc-close {
+  position: absolute; right: 6px; top: calc(50% + 1px); transform: translateY(-50%);
+  background: none; border: none; color: var(--fg);
+  opacity: 0.4; cursor: pointer;
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  padding: 0;
+  z-index: 2;
+}
+.email-field .email-cc-close:hover {
+  opacity: 1;
+  color: var(--accent, var(--red));
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.email-field input { padding-right: 60px; }
+.email-field #doc-email-cc, .email-field #doc-email-bcc { padding-right: 32px; }
+.email-field #doc-email-subject { padding-right: 8px; }
+
+.doc-email-actions {
+  display: flex; gap: 8px; justify-content: flex-end; padding: 10px 14px;
+  border-top: 1px solid var(--border); background: var(--bg); flex-shrink: 0;
+  align-items: center;
+}
+/* Documents footer â€” X + Undo stay on the LEFT, Copy/Export group pushed
+   to the RIGHT. Email composer keeps its original flex-end layout. */
+#doc-actions-footer {
+  justify-content: flex-start;
+}
+#doc-actions-footer .email-send-split {
+  margin-left: auto;
+}
+/* WYSIWYG email body â€” what the recipient sees, edited in place. */
+.doc-email-richbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--bg);
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.doc-email-richbody:empty::before {
+  content: "Write your email\2026";
+  opacity: 0.4;
+  pointer-events: none;
+}
+.doc-email-richbody a { color: var(--accent, #4af); }
+.doc-email-richbody blockquote {
+  margin: 6px 0; padding-left: 10px;
+  border-left: 3px solid var(--border); opacity: 0.8;
+}
+.doc-email-richbody h1, .doc-email-richbody h2, .doc-email-richbody h3 { margin: 0.4em 0; }
+.doc-email-richbody p { margin: 0.5em 0; }
+.email-more-menu {
+  position: absolute; bottom: 100%; right: 0; margin-bottom: 6px;
+  min-width: 160px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; box-shadow: 0 -4px 12px rgba(0,0,0,0.2); padding: 4px;
+  z-index: 100;
+}
+.email-send-btn {
+  background: color-mix(in srgb, var(--accent-primary, var(--red)) 20%, transparent);
+  color: var(--accent-primary, var(--red));
+  border: 1px solid color-mix(in srgb, var(--accent-primary, var(--red)) 50%, transparent);
+  border-radius: 6px;
+  padding: 0 14px; height: 28px; font-size: 11px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: all 0.15s; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+/* Split send button: [ Send â”‚ â–¾ ] â€” the caret drops the send-options menu UP. */
+.email-send-split { position: relative; display: inline-flex; }
+.email-send-split .email-send-main {
+  border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none;
+}
+.email-send-split .email-send-caret {
+  border-top-left-radius: 0; border-bottom-left-radius: 0;
+  padding: 0 8px; gap: 0;
+  /* its left border is the single divider between the two halves */
+  border-left: 1px solid color-mix(in srgb, var(--accent-primary, var(--red)) 50%, transparent);
+}
+.email-send-split .email-send-caret svg { transition: transform 0.15s ease; }
+.email-send-split .email-send-caret[aria-expanded="true"] svg { transform: rotate(180deg); }
+.email-send-btn svg { flex-shrink: 0; }
+.email-send-btn:hover {
+  background: color-mix(in srgb, var(--accent-primary, var(--red)) 30%, transparent);
+  border-color: var(--accent-primary, var(--red));
+}
+.email-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.email-draft-btn {
+  background: none; border: 1px solid var(--border);
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  border-radius: 6px;
+  padding: 0 12px; height: 28px; font-size: 11px; cursor: pointer;
+  font-family: inherit; transition: all 0.15s; white-space: nowrap;
+}
+.email-draft-btn:hover { border-color: var(--fg); color: var(--fg); }
+.email-draft-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.email-discard-btn {
+  background: transparent;
+  /* Dim the label text via color-mix instead of `opacity:0.6` on the whole
+     button â€” opacity multiplies through to the SVG and washes out the accent
+     X glyph. Per-element color dimming keeps the X at full accent strength. */
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 14px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+/* The âœ• glyph itself reads in accent. */
+.email-discard-btn svg { color: var(--accent-primary, var(--red)); opacity: 1; }
+.email-discard-btn:hover { opacity: 1; color: var(--red, #e55); border-color: var(--red, #e55); }
+
+/* Compose email "more" menu button â€” icon only, matches draft btn height */
+#doc-email-more-btn {
+  background: none; border: 1px solid var(--border);
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  border-radius: 6px;
+  width: 28px; height: 28px; padding: 0;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+#doc-email-more-btn:hover {
+  border-color: var(--fg); color: var(--fg);
+}
+#doc-email-more-btn svg { opacity: 0.8; }
+.email-more-wrap { display: inline-flex; }
+.email-attachments {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 0 58px;
+}
+.email-attachment-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; font-size: 11px; background: var(--hover-bg, rgba(255,255,255,0.05));
+  border: 1px solid var(--border); border-radius: 12px; color: var(--fg);
+  text-decoration: none; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  max-width: 200px; min-width: 0;
+}
+.email-attachment-chip:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  /* Expand chip on hover so the full filename is revealed. Native title-
+     attribute tooltips were slow / unreliable, so we just grow the chip. */
+  max-width: 90vw;
+}
+.email-attachment-chip > span:not(.att-size):not(.email-attachment-open) {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1 1 auto; min-width: 0;
+}
+.email-attachment-chip:hover > span:not(.att-size):not(.email-attachment-open) {
+  overflow: visible;
+  text-overflow: clip;
+}
+.email-attachment-chip .att-size { opacity: 0.5; font-size: 10px; flex-shrink: 0; }
+.email-attachment-chip-muted { opacity: 0.65; }
+.email-attachment-chip-muted:hover { opacity: 1; }
+.email-attachment-chip-related {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+/* "Open in editor" launch icon â€” same prominent style on desktop AND mobile
+   (was 24px / dim / no border on desktop, easy to miss). Accent-tinted
+   background + border makes it read as a real action. */
+.email-attachment-open {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 22px; padding: 0 9px; border-radius: 999px;
+  margin-left: 6px; flex: 0 0 auto;
+  font-size: 10px; font-weight: 500; letter-spacing: 0.02em;
+  color: var(--accent-primary, var(--red));
+  background: color-mix(in srgb, var(--accent-primary, var(--red)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary, var(--red)) 40%, transparent);
+  cursor: pointer; transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.email-attachment-open svg,
+.email-attachment-open > svg {
+  width: 12px; height: 12px;
+  opacity: 0.9;
+}
+.email-attachment-open:hover {
+  background: color-mix(in srgb, var(--accent-primary, var(--red)) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary, var(--red)) 70%, transparent);
+}
+.email-attachment-open-label { line-height: 1; }
+/* Collapsed chip: open button is icon-only (the labeled pill crowds the
+   small chip). Hover expands the chip and reveals the "Open" label too. */
+.email-attachment-chip:not(:hover) .email-attachment-open-label {
+  display: none;
+}
+.email-attachment-chip:not(:hover) .email-attachment-open {
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+@media (max-width: 768px) {
+  .doc-email-collapse-btn {
+    background: inherit;
+  }
+  /* Mobile: keep the pill but ensure a comfortable touch target. */
+  .email-attachment-open {
+    height: 26px; padding: 0 10px;
+    min-height: 26px !important;
+  }
+  .email-attachments,
+  .email-compose-atts {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-left: 0;
+    padding-bottom: 2px;
+  }
+  .email-attachments::-webkit-scrollbar,
+  .email-compose-atts::-webkit-scrollbar {
+    display: none;
+  }
+  /* Attachment chip body â€” modest minimum height so the open icon sits
+     neatly without dominating. */
+  .email-attachment-chip,
+  .email-compose-chip {
+    flex: 0 0 auto;
+    padding: 6px 8px !important;
+    min-height: 36px !important;
+  }
+  .email-compose-chip .compose-chip-name {
+    max-width: 190px;
+  }
+}
+
+/* Compose attachment chips (when sending new email) */
+.email-compose-atts {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 6px 0 0 58px;
+}
+.email-compose-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 4px 4px 8px; font-size: 11px;
+  background: var(--hover-bg, rgba(255,255,255,0.05));
+  border: 1px solid var(--border); border-radius: 12px; color: var(--fg);
+}
+.email-compose-chip .compose-chip-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-compose-chip .att-size { opacity: 0.5; font-size: 10px; }
+.email-compose-chip .compose-chip-remove {
+  background: none; border: none; color: var(--fg); opacity: 0.5;
+  font-size: 16px; line-height: 1; padding: 0 4px; cursor: pointer;
+}
+.email-compose-chip .compose-chip-remove:hover { opacity: 1; color: var(--red, #e55); }
+
+.email-cc-toggle {
+  background: none; border: none; color: var(--fg);
+  opacity: 0.4; font-size: 11px; cursor: pointer;
+  padding: 4px 8px; font-family: inherit;
+}
+.email-cc-toggle:hover {
+  opacity: 1;
+  color: var(--accent, #4a9eff);
+  background: none !important;
+}
+
+@media (max-width: 768px) {
+  .doc-email-collapse-btn {
+    display: flex;
+  }
+}
+@media (min-width: 769px) {
+  #doc-email-header #doc-email-collapse-btn.doc-email-collapse-btn {
+    display: none !important;
+  }
+  #doc-email-header.doc-email-header-collapsed .doc-email-fields {
+    display: flex !important;
+  }
+}
+
+.email-autocomplete {
+  position: absolute; top: 100%; left: 58px; right: 0; z-index: 1000;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2); max-height: 240px; overflow-y: auto;
+  margin-top: 2px;
+}
+.contact-suggestion {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 6px 10px; font-size: 12px; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.contact-suggestion:last-child { border-bottom: none; }
+.contact-suggestion:hover, .contact-suggestion.active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.contact-suggestion .contact-name { font-weight: 600; color: var(--fg); }
+.contact-suggestion .contact-email { opacity: 0.6; font-size: 11px; }
+.email-ai-reply-btn {
+  background: none;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 12px; height: 28px; font-size: 11px; cursor: pointer;
+  font-family: inherit; transition: all 0.15s;
+  display: inline-flex; align-items: center; white-space: nowrap;
+}
+.email-ai-reply-btn:hover {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+.email-ai-reply-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Align select/new buttons in popup library toolbar */
+#email-lib-select-btn, #email-lib-refresh-btn, #email-lib-compose-btn { position: relative; top: -4px; }
+/* Select + Refresh sit slightly lower than Compose on desktop. */
+#email-lib-select-btn, #email-lib-refresh-btn { top: -2px; }
+/* New (Compose) button gets a slightly taller, slightly lower variant
+   on desktop so it reads as the primary action of the row. Scoped to
+   desktop so the mobile touch-friendly variant (further down) stays in
+   charge for â‰¤768px. */
+@media (min-width: 769px) {
+  #email-lib-compose-btn { height: 28px; top: 0; }
+}
+/* Envelope icon picks up the user's accent so the primary action is
+   easy to spot at any size. The SVG already uses stroke=currentColor,
+   so a color: rule on the svg propagates. */
+#email-lib-compose-btn svg { color: var(--accent, var(--red)); }
+@media (max-width: 768px) {
+  /* On mobile they're 1px higher than desktop. */
+  #email-lib-select-btn, #email-lib-refresh-btn { top: -3px; }
+}
+
+/* On mobile, the "New" (compose) button deserves a touch-friendly size
+   so it stands out from the smaller toolbar buttons next to it. Lift
+   it slightly visually with a bigger SVG, padding, and font. */
+@media (max-width: 768px) {
+  #email-lib-compose-btn {
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+    min-height: 36px;
+    border-radius: 8px;
+    font-weight: 600;
+    top: -2px;
+  }
+  #email-lib-compose-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+    margin-right: 5px !important;
+  }
+}

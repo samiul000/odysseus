@@ -234,6 +234,7 @@ export function toggle() {
 }
 
 export function openPanel(focusJobId) {
+  if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('research');
   if (_open) {
     const overlay = document.getElementById('research-overlay');
     if (overlay && overlay.style.display === 'none') {

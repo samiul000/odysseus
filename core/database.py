@@ -615,38 +615,6 @@ class ScheduledTask(TimestampMixin, Base):
     )
 
 
-class EditorDraft(TimestampMixin, Base):
-    """Persisted in-progress gallery-editor session — layered project state
-    that the user can close and reopen later. Stores the full layer payload
-    as JSON (with base64-encoded PNG dataURLs per layer) plus a small
-    thumbnail for the landing-screen list.
-    """
-    __tablename__ = "editor_drafts"
-
-    id              = Column(String, primary_key=True, index=True)
-    owner           = Column(String, nullable=True, index=True)
-    name            = Column(String, nullable=False, default="Untitled")
-    # If the draft was opened FROM a gallery photo, point back at it so we
-    # can show "Resuming edit of <photo>" and so reopening that photo picks
-    # up the same draft rather than starting fresh.
-    source_image_id = Column(String, nullable=True, index=True)
-    width           = Column(Integer, nullable=True)
-    height          = Column(Integer, nullable=True)
-    # Full draft body — layer pixels (base64 PNG dataURLs), offsets,
-    # opacities, visibility, active id, next id, etc. Kept as TEXT/JSON so
-    # we don't have to re-shape the model every time the editor adds a
-    # new piece of state.
-    payload         = Column(Text, nullable=False, default="")
-    # Tiny preview (data URL, ~128px wide) for the landing list. Stored
-    # inline so the list endpoint can return everything in one shot.
-    thumbnail       = Column(Text, nullable=True)
-    is_active       = Column(Boolean, default=True)
-
-    __table_args__ = (
-        Index('ix_editor_drafts_owner_updated', 'owner', 'is_active', 'updated_at'),
-    )
-
-
 class TaskRun(Base):
     """Record of a single execution of a ScheduledTask."""
     __tablename__ = "task_runs"

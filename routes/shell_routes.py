@@ -42,6 +42,7 @@ from core.platform_compat import (
     detached_popen_kwargs,
     find_bash,
     git_bash_path,
+    safe_chmod,
 )
 
 
@@ -284,8 +285,10 @@ def _prepend_user_install_bins_to_path() -> None:
     """
     try:
         import site
+        import sys
 
-        candidates = [os.path.join(site.USER_BASE, "bin")]
+        user_bin = "Scripts" if sys.platform == "win32" else "bin"
+        candidates = [os.path.join(site.USER_BASE, user_bin)]
     except Exception:
         candidates = []
     candidates.append(os.path.expanduser("~/.local/bin"))
@@ -627,11 +630,13 @@ async def _generate_tmux(cmd: str, request: Request):
         f"exit $EC\n",
         encoding="utf-8",
     )
-    script_path.chmod(0o755)
+    safe_chmod(script_path, 0o755)
     logger.info(
         "tmux wrapper script created: session=%s path=%s", session_id, script_path
     )
 
+    if not shutil.which("tmux"):
+        raise RuntimeError("tmux is not available on this system")
     tmux_cmd = f"tmux new-session -d -s {session_id} {shlex.quote(str(script_path))}"
 
     proc = await asyncio.create_subprocess_shell(
@@ -1162,14 +1167,14 @@ def setup_shell_routes() -> APIRouter:
             {
                 "name": "rembg",
                 "pip": "rembg[gpu]",
-                "desc": "AI background removal for image editor",
+                "desc": "AI background removal",
                 "category": "Image",
                 "target": "local",
             },
             {
                 "name": "realesrgan",
                 "pip": "realesrgan",
-                "desc": "AI denoise + upscale (Real-ESRGAN). Used by editor's Denoise and Upscale tools.",
+                "desc": "AI denoise + upscale (Real-ESRGAN)",
                 "category": "Image",
                 "target": "local",
             },

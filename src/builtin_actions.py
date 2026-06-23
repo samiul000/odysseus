@@ -2136,7 +2136,7 @@ async def action_cookbook_serve(
         {},
     )
     if srv.get("env") == "venv" and srv.get("envPath"):
-        body["env_prefix"] = f"source {srv['envPath']}/bin/activate"
+        body["env_prefix"] = f"source {srv['envPath']}\\Scripts\\activate" if IS_WINDOWS else f"source {srv['envPath']}/bin/activate"
     elif srv.get("env") == "conda" and srv.get("envPath"):
         body["env_prefix"] = f"conda activate {srv['envPath']}"
     if srv.get("hfToken"): body["hf_token"] = srv["hfToken"]

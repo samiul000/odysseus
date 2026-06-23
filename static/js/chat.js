@@ -4906,12 +4906,8 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
     const id = att.id, name = att.name || '', mime = att.mime || '';
     const url = `${API_BASE}/api/upload/${id}`;
 
-    // Images → Gallery editor.
+    // Images → open in new tab.
     if (isImage) {
-      try {
-        const gx = await import('./galleryEditor.js');
-        if (gx.openEditor) { gx.openEditor(url, id, null, name); return; }
-      } catch (e) { console.warn('gallery open failed', e); }
       window.open(url, '_blank');
       return;
     }

@@ -3417,6 +3417,7 @@ function _wheelNav(e) {
 }
 
 function openCalendar() {
+  if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('calendar');
   if (_open) return;
   // If currently minimized — restore in place, preserve all state
   if (Modals.isMinimized('calendar-modal')) {

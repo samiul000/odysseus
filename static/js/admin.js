@@ -3015,6 +3015,7 @@ export function _initData() {
 }
 
 export function open(tab) {
+  if (typeof cssLoader !== 'undefined') cssLoader.loadFeatureCss('admin');
   _initData();
   settingsModule.open(tab || 'services');
 }

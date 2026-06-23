@@ -102,3 +102,7 @@ compound.config.json
 *.error.log
 _scratch/
 /odysseus/
+
+# Debug
+image/
+

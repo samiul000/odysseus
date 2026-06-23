@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from src.constants import MAX_READ_CHARS, DEEP_RESEARCH_DIR, VAULT_FILE
 from src.tool_utils import get_mcp_manager
 from core.constants import internal_api_base
+from core.platform_compat import IS_WINDOWS
 from routes._validators import validate_remote_host, validate_ssh_port
 
 logger = logging.getLogger(__name__)
@@ -2823,7 +2824,7 @@ async def do_serve_model(content: str, owner: Optional[str] = None) -> Dict:
     env_path = (env_cfg.get("env_path") or "").rstrip("/")
     env_type = (env_cfg.get("env_type") or env_cfg.get("env") or "").lower()
     if env_type == "venv" and env_path:
-        venv_bin = f"{env_path}/bin"
+        venv_bin = f"{env_path}\\Scripts" if IS_WINDOWS else f"{env_path}/bin"
         # Match the FIRST shell-token: skip leading KEY=VAL env-var prefixes
         # (CUDA_VISIBLE_DEVICES=… VLLM_USE_FLASHINFER_SAMPLER=…) before the binary.
         import re as _re3
@@ -2835,7 +2836,7 @@ async def do_serve_model(content: str, owner: Optional[str] = None) -> Dict:
         if idx < len(tokens):
             head = tokens[idx]
             if head in ("vllm", "python3", "python"):
-                tokens[idx] = f"{venv_bin}/{head}"
+                tokens[idx] = f"{venv_bin}\\{head}" if IS_WINDOWS else f"{venv_bin}/{head}"
                 cmd = " ".join(tokens)
                 payload["cmd"] = cmd
     if env_cfg.get("env_prefix"): payload["env_prefix"] = env_cfg["env_prefix"]
@@ -4278,10 +4279,7 @@ async def do_vault_unlock(content: str, owner: Optional[str] = None) -> Dict:
     from datetime import datetime as _dt
     cfg["unlocked_at"] = _dt.utcnow().isoformat()
     p.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-    try:
-        import os as _os
-        _os.chmod(str(p), 0o600)
-    except Exception:
-        pass
+    from core.platform_compat import safe_chmod as _safe_chmod
+    _safe_chmod(str(p), 0o600)
 
     return {"output": "Vault unlocked. Session saved.", "exit_code": 0}

@@ -1689,7 +1689,9 @@ export function _expandModelRow(row, modelData) {
       let envPrefix = '';
       if (_envState.env === 'venv' && _envState.envPath) {
         const p = _envState.envPath;
-        envPrefix = 'source ' + _shellQuote(p.endsWith('/bin/activate') ? p : p + '/bin/activate');
+        const isWin = _envState.platform === 'windows';
+        const suffix = isWin ? '/Scripts/activate' : '/bin/activate';
+        envPrefix = 'source ' + _shellQuote(p.endsWith(suffix) ? p : p + suffix);
       } else if (_envState.env === 'conda' && _envState.envPath) {
         envPrefix = 'eval "$(conda shell.bash hook)" && conda activate ' + _shellQuote(_envState.envPath);
       }
